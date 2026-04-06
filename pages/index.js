@@ -110,16 +110,21 @@ export default function Home() {
   }, [market]);
 
   useEffect(() => {
-    visible.forEach(c => {
-      if (fetched.current.has(c.name)) return;
+    const toFetch = visible.filter(c => !fetched.current.has(c.name));
+    toFetch.forEach(c => {
       fetched.current.add(c.name);
       setCards(p => ({ ...p, [c.name]: "loading" }));
-      callProxy(companyPrompt(c))
-        .then(d  => setCards(p => ({ ...p, [c.name]: d })))
-        .catch(() => {
-          setCards(p => ({ ...p, [c.name]: "error" }));
-          fetched.current.delete(c.name);
-        });
+    });
+
+    toFetch.forEach((c, i) => {
+      setTimeout(() => {
+        callProxy(companyPrompt(c))
+          .then(d  => setCards(p => ({ ...p, [c.name]: d })))
+          .catch(() => {
+            setCards(p => ({ ...p, [c.name]: "error" }));
+            fetched.current.delete(c.name);
+          });
+      }, i * 15000); // one request every 15 seconds
     });
   }, [market]);
 
