@@ -12,7 +12,7 @@ export default async function handler(req, res) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-3-5-haiku-20241022",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: maxTokens || 600,
         messages: [{ role: "user", content: prompt }],
       }),
@@ -20,6 +20,7 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       const err = await response.text();
+      console.error("Anthropic error:", err);
       return res.status(response.status).json({ error: err });
     }
 
@@ -34,6 +35,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json(JSON.parse(match[0]));
   } catch (err) {
+    console.error("Handler error:", err);
     return res.status(500).json({ error: err.message });
   }
 }
