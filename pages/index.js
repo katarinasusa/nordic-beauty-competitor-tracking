@@ -43,7 +43,7 @@ function companyPrompt(c) {
     "STOCKA.HE":"~1.5-2.5 EUR","MC.PA":"~600-700 EUR",
   }[c.ticker] || "";
   return `You are a Nordic retail analyst. Today: ${TODAY()}.
-Search the web for the LATEST news about "${c.name}" - a beauty/wellbeing retailer active in ${c.markets.join(", ")}.
+Based on your knowledge, give a realistic intelligence snapshot for "${c.name}" - a beauty/wellbeing retailer active in ${c.markets.join(", ")}.
 ${c.ticker ? `Stock ticker: ${c.ticker} ${hint}.` : "Privately held."}
 Return ONLY valid JSON (no markdown, no backticks):
 {
