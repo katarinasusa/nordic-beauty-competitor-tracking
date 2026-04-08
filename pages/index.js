@@ -110,21 +110,26 @@ function IndicatorBlock({ label, data, unit = "" }) {
   if (data.error) return (
     <div style={{ background: T.white, padding: "16px 18px" }}>
       <div style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: T.textMuted, marginBottom: 8 }}>{label}</div>
-      <div style={{ fontSize: 11, color: T.textMuted }}>Unavailable</div>
+      <div style={{ fontSize: 11, color: T.textMuted, fontStyle: "italic" }}>Unavailable</div>
     </div>
   );
   return (
     <div style={{ background: T.white, padding: "16px 18px" }}>
       <div style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: T.textMuted, marginBottom: 8 }}>{label}</div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
-        <span style={{ fontSize: 22, fontWeight: 300, color: T.forest }}>{data.value}{unit}</span>
+        <span style={{ fontSize: 22, fontWeight: 300, color: T.forest, letterSpacing: "-0.02em" }}>
+          {data.value}{unit}
+        </span>
         {data.change && (
-          <span style={{ fontSize: 11, fontWeight: 500, color: data.direction === "up" ? "#2D6A4F" : data.direction === "down" ? "#7A3A3A" : T.textMuted }}>
+          <span style={{
+            fontSize: 11, fontWeight: 500,
+            color: data.direction === "up" ? "#2D6A4F" : data.direction === "down" ? "#7A3A3A" : T.textMuted,
+          }}>
             {data.direction === "up" ? "↑" : data.direction === "down" ? "↓" : "→"} {data.change}
           </span>
         )}
       </div>
-      <div style={{ fontSize: 10, color: T.textMuted }}>{data.period} · OECD</div>
+      <div style={{ fontSize: 10, color: T.textMuted }}>{data.period} · {data.source}</div>
     </div>
   );
 }
@@ -145,17 +150,14 @@ export default function Home() {
   const loaded  = visible.filter(c => cards[c.name] && cards[c.name] !== "loading").length;
   const pct     = visible.length ? (loaded / visible.length) * 100 : 0;
 
-  // Stocks
   useEffect(() => {
     fetch("/api/stocks").then(r => r.json()).then(setStocks).catch(() => {});
   }, []);
 
-  // OECD indicators — fetch once
   useEffect(() => {
     fetch("/api/indicators").then(r => r.json()).then(setIndicators).catch(() => {});
   }, []);
 
-  // Brief
   useEffect(() => {
     if (briefFetched.current.has(market)) return;
     briefFetched.current.add(market);
@@ -165,7 +167,6 @@ export default function Home() {
       .catch(() => setBriefLoad(false));
   }, [market]);
 
-  // Company cards
   useEffect(() => {
     const toFetch = visible.filter(c => !fetched.current.has(c.name));
     toFetch.forEach(c => {
@@ -191,7 +192,6 @@ export default function Home() {
     });
   }, [market]);
 
-  // Which markets to show indicators for
   const indicatorMarkets = market === "All"
     ? ["Denmark","Sweden","Norway","Finland"]
     : [market];
@@ -215,7 +215,7 @@ export default function Home() {
         .mkt-btn:hover { background: #E3DDD4 !important; }
         .expand-btn { transition: background .15s; cursor: pointer; border: none; font-family: inherit; }
         .expand-btn:hover { background: #E3DDD4 !important; }
-        .news-row { transition: background .15s; display:flex; text-decoration:none; }
+        .news-row { transition: background .15s; display: flex; text-decoration: none; }
         .news-row:hover { background: #EDE8E0 !important; }
       `}</style>
 
@@ -275,6 +275,8 @@ export default function Home() {
             </div>
           ) : brief ? (
             <div className="fade">
+
+              {/* Summary + trend pill */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 24, alignItems: "start", marginBottom: 28 }}>
                 <p style={{ fontSize: 15, lineHeight: 1.8, color: T.textMid, maxWidth: 700 }}>{brief.summary}</p>
                 {brief.trend && (
@@ -284,22 +286,39 @@ export default function Home() {
                 )}
               </div>
 
-              {/* OECD Indicators */}
+              {/* Market Indicators */}
               <div style={{ marginBottom: 28 }}>
                 <div style={{ fontSize: 10, letterSpacing: "0.3em", textTransform: "uppercase", color: T.textMuted, marginBottom: 14 }}>
-                  Market Indicators — Official OECD Data
+                  Market Indicators — OECD & World Bank Official Data
                 </div>
                 {indicatorMarkets.map(mkt => (
-                  <div key={mkt} style={{ marginBottom: indicatorMarkets.length > 1 ? 16 : 0 }}>
+                  <div key={mkt} style={{ marginBottom: indicatorMarkets.length > 1 ? 20 : 0 }}>
                     {indicatorMarkets.length > 1 && (
                       <div style={{ fontSize: 10, color: T.textMuted, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 8 }}>
                         {FLAGS[mkt]} {mkt}
                       </div>
                     )}
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 1, background: T.border, border: `1px solid ${T.border}` }}>
-                      <IndicatorBlock label="Consumer Confidence" data={indicators?.[mkt]?.consumerConfidence} />
-                      <IndicatorBlock label="CPI Inflation" data={indicators?.[mkt]?.cpi} unit="%" />
-                      <IndicatorBlock label="Retail Sales Growth" data={indicators?.[mkt]?.retailSales} unit="%" />
+                    <div style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3, 1fr)",
+                      gap: 1,
+                      background: T.border,
+                      border: `1px solid ${T.border}`,
+                    }}>
+                      <IndicatorBlock
+                        label="Consumer Confidence"
+                        data={indicators?.[mkt]?.consumerConfidence}
+                      />
+                      <IndicatorBlock
+                        label="CPI Inflation"
+                        data={indicators?.[mkt]?.cpi}
+                        unit="%"
+                      />
+                      <IndicatorBlock
+                        label="Unemployment"
+                        data={indicators?.[mkt]?.unemployment}
+                        unit="%"
+                      />
                     </div>
                   </div>
                 ))}
@@ -334,22 +353,22 @@ export default function Home() {
           <span style={{ fontSize: 11, color: T.textMuted }}>{visible.length} companies tracked</span>
         </div>
 
-        {/* Company grid — equal height cards with pinned footer */}
+        {/* Company grid */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: 2, background: T.border }}>
           {visible.map(c => {
-            const d        = cards[c.name];
-            const isLoaded = d && d !== "loading" && d !== "error";
-            const isOpen   = expanded === c.name;
-            const stock    = stocks[c.ticker];
+            const d         = cards[c.name];
+            const isLoaded  = d && d !== "loading" && d !== "error";
+            const isOpen    = expanded === c.name;
+            const stock     = stocks[c.ticker];
             const sentStyle = isLoaded ? (SENT_STYLE[d.sentiment] || SENT_STYLE.neutral) : null;
-            const hasNews  = isLoaded && d.items?.length > 0;
+            const hasNews   = isLoaded && d.items?.length > 0;
 
             return (
               <div key={c.name} className="card" style={{
                 background: c.isMatas ? "#F5F0EA" : T.white,
                 border: `1px solid ${c.isMatas ? T.mauveDark : "transparent"}`,
               }}>
-                {/* Card body — grows to fill */}
+                {/* Card body */}
                 <div style={{ padding: "20px 22px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 12 }}>
                     <div>
@@ -361,6 +380,8 @@ export default function Home() {
                         <span style={{ fontSize: 12 }}>{c.markets.map(m => FLAGS[m]).join(" ")}</span>
                       </div>
                     </div>
+
+                    {/* Real stock price */}
                     {c.ticker && (
                       <div style={{ textAlign: "right", flexShrink: 0 }}>
                         {!stock ? (
@@ -380,6 +401,7 @@ export default function Home() {
                     )}
                   </div>
 
+                  {/* Content */}
                   {!d || d === "loading" ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <Shimmer w="90%" h={13} /><Shimmer w="65%" h={13} />
@@ -412,7 +434,7 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* Pinned footer — always at bottom */}
+                {/* Pinned footer */}
                 <div style={{ marginTop: "auto" }}>
                   {isLoaded && (
                     <button className="expand-btn" onClick={() => setExpanded(isOpen ? null : c.name)} style={{
