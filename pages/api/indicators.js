@@ -1,134 +1,78 @@
-async function fetchOECDConfidence() {
-  // OECD CLI (Composite Leading Indicator) - Consumer Confidence
-  // Countries: DNK=Denmark, SWE=Sweden, NOR=Norway, FIN=Finland
-  const countries = { DNK: "Denmark", SWE: "Sweden", NOR: "Norway", FIN: "Finland" };
-  const url = `https://sdmx.oecd.org/public/rest/data/OECD.SDD.STES,DSD_STES@DF_CLI,4.0/DNK+SWE+NOR+FIN.M.LI.AA.AA.IX?startPeriod=2024-06&format=jsondata&dimensionAtObservation=AllDimensions`;
-  const r = await fetch(url, {
-    headers: { "Accept": "application/vnd.sdmx.data+json;version=2.0" },
-  });
-  if (!r.ok) throw new Error(`OECD ${r.status}`);
-  const d = await r.json();
-
-  const dims = d.data.structure.dimensions.observation;
-  const countryDim = dims.find(x => x.id === "REF_AREA");
-  const timeDim = dims.find(x => x.id === "TIME_PERIOD");
-  const obs = d.data.dataSets[0].observations;
-
-  const results = {};
-  Object.entries(obs).forEach(([key, val]) => {
-    const idxs = key.split(":");
-    const countryCode = countryDim.values[parseInt(idxs[countryDim.keyPosition])].id;
-    const timeVal = timeDim.values[parseInt(idxs[timeDim.keyPosition])].id;
-    if (!results[countryCode] || timeVal > results[countryCode].time) {
-      results[countryCode] = { value: val[0], time: timeVal };
-    }
-  });
-
-  return Object.entries(results).map(([code, v]) => ({
-    country: countries[code] || code,
-    value: v.value?.toFixed(1),
-    time: v.time,
-  }));
-}
-
-async function fetchEurostatCPI() {
-  // Eurostat HICP - annual rate of change, all items
-  const geos = ["DK", "SE", "NO", "FI"];
-  const countryNames = { DK: "Denmark", SE: "Sweden", NO: "Norway", FI: "Finland" };
-  const url = `https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/prc_hicp_manr?geo=${geos.join("&geo=")}&coicop=CP00&sinceTimePeriod=2024-M06&format=JSON&lang=EN`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`Eurostat ${r.status}`);
-  const d = await r.json();
-
-  const geoIndex = d.dimension.geo.category.index;
-  const timeIndex = d.dimension.time.category.index;
-  const values = d.value;
-  const timeKeys = Object.keys(timeIndex).sort().reverse();
-  const results = {};
-
-  geos.forEach(geo => {
-    const gi = geoIndex[geo];
-    if (gi === undefined) return;
-    for (const t of timeKeys) {
-      const ti = timeIndex[t];
-      const idx = gi * Object.keys(timeIndex).length + ti;
-      if (values[idx] !== undefined && values[idx] !== null) {
-        results[geo] = { value: values[idx].toFixed(1), time: t };
-        break;
-      }
-    }
-  });
-
-  return Object.entries(results).map(([code, v]) => ({
-    country: countryNames[code] || code,
-    cpi: v.value,
-    time: v.time,
-  }));
-}
-
-async function fetchEurostatRetail() {
-  // Eurostat retail trade volume index - monthly
-  const geos = ["DK", "SE", "NO", "FI"];
-  const countryNames = { DK: "Denmark", SE: "Sweden", NO: "Norway", FI: "Finland" };
-  // sts_trtu_m - retail trade, total, growth rate
-  const url = `https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/sts_trtu_m?geo=${geos.join("&geo=")}&indic_bt=TOVV&nace_r2=G47&s_adj=NSA&unit=PCH_SM&sinceTimePeriod=2024-M06&format=JSON&lang=EN`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`Eurostat retail ${r.status}`);
-  const d = await r.json();
-
-  const geoIndex = d.dimension.geo.category.index;
-  const timeIndex = d.dimension.time.category.index;
-  const values = d.value;
-  const timeKeys = Object.keys(timeIndex).sort().reverse();
-  const results = {};
-
-  geos.forEach(geo => {
-    const gi = geoIndex[geo];
-    if (gi === undefined) return;
-    for (const t of timeKeys) {
-      const ti = timeIndex[t];
-      const idx = gi * Object.keys(timeIndex).length + ti;
-      if (values[idx] !== undefined && values[idx] !== null) {
-        results[geo] = { value: values[idx].toFixed(1), time: t };
-        break;
-      }
-    }
-  });
-
-  return Object.entries(results).map(([code, v]) => ({
-    country: countryNames[code] || code,
-    retailGrowth: v.value,
-    time: v.time,
-  }));
-}
-
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).end();
 
-  const [confidenceRes, cpiRes, retailRes] = await Promise.allSettled([
-    fetchOECDConfidence(),
-    fetchEurostatCPI(),
-    fetchEurostatRetail(),
-  ]);
+  // OECD country codes
+  const countries = { Denmark: "DNK", Sweden: "SWE", Norway: "NOR", Finland: "FIN" };
 
-  const confidence = confidenceRes.status === "fulfilled" ? confidenceRes.value : [];
-  const cpi        = cpiRes.status === "fulfilled" ? cpiRes.value : [];
-  const retail     = retailRes.status === "fulfilled" ? retailRes.value : [];
+  // OECD series codes
+  // CSCICP03: Consumer Confidence (amplitude adjusted, normalised)
+  // CPALTT01: CPI all items, % change vs same period prior year  
+  // SLRTTO01: Retail trade, value, % change vs same period prior year
 
-  // Merge by country
-  const countries = ["Denmark", "Sweden", "Norway", "Finland"];
-  const merged = countries.map(country => {
-    const c = confidence.find(x => x.country === country);
-    const p = cpi.find(x => x.country === country);
-    const r = retail.find(x => x.country === country);
-    return {
-      country,
-      confidence: c ? { value: c.value, time: c.time } : null,
-      cpi: p ? { value: p.cpi, time: p.time } : null,
-      retailGrowth: r ? { value: r.retailGrowth, time: r.time } : null,
-    };
-  });
+  const series = {
+    consumerConfidence: "CSCICP03",
+    cpi:               "CPALTT01",
+    retailSales:       "SLRTTO01",
+  };
 
-  res.setHeader("Cache-Control", "s-maxage=3600, stale-while-revalidate");
-  return res.status(200).json({ countries: merged, fetchedAt: new Date().toISOString() });
+  async function fetchOECD(seriesCode, countryCode) {
+    try {
+      const url = `https://stats.oecd.org/SDMX-JSON/data/MEI/${countryCode}.${seriesCode}.IXOBSAM.M/all?startTime=2024-01&dimensionAtObservation=allDimensions&contentType=json`;
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!r.ok) throw new Error(`OECD ${r.status}`);
+      const data = await r.json();
+
+      // Extract observations
+      const obs = data?.dataSets?.[0]?.observations;
+      if (!obs) throw new Error("No observations");
+
+      // Get time periods
+      const times = data?.structure?.dimensions?.observation?.find(d => d.id === "TIME_PERIOD")?.values;
+      if (!times) throw new Error("No time periods");
+
+      // Find latest two non-null values
+      const sorted = times
+        .map((t, i) => ({ period: t.id, value: obs[`0:0:0:0:${i}`]?.[0] ?? obs[`0:0:0:${i}`]?.[0] ?? null }))
+        .filter(x => x.value !== null)
+        .sort((a, b) => b.period.localeCompare(a.period));
+
+      if (sorted.length === 0) throw new Error("No data");
+
+      const latest = sorted[0];
+      const prev   = sorted[1];
+      const change = prev ? (latest.value - prev.value).toFixed(2) : null;
+
+      return {
+        value:  latest.value.toFixed(1),
+        period: latest.period,
+        change: change ? (parseFloat(change) >= 0 ? `+${change}` : change) : null,
+        direction: change ? (parseFloat(change) > 0 ? "up" : parseFloat(change) < 0 ? "down" : "flat") : "flat",
+      };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  try {
+    const results = {};
+
+    await Promise.all(
+      Object.entries(countries).map(async ([country, code]) => {
+        const [cc, cpi, retail] = await Promise.all([
+          fetchOECD(series.consumerConfidence, code),
+          fetchOECD(series.cpi, code),
+          fetchOECD(series.retailSales, code),
+        ]);
+        results[country] = {
+          consumerConfidence: cc,
+          cpi,
+          retailSales: retail,
+        };
+      })
+    );
+
+    return res.status(200).json(results);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
 }
