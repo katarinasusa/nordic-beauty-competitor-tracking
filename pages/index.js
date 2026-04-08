@@ -44,7 +44,6 @@ const T = {
   white:     "#FAFAF8",
 };
 
-// ── API helpers ───────────────────────────────────────────────────────
 async function callProxy(prompt, maxTokens = 800) {
   const res = await fetch("/api/claude", {
     method: "POST",
@@ -64,10 +63,8 @@ async function fetchNews(company) {
 function insightPrompt(c, newsItems) {
   const headlines = newsItems.map(n => `- ${n.title}`).join("\n");
   return `You are a Nordic beauty retail strategist at Matas Group. Today: ${TODAY()}.
-
 Based on these recent news headlines about "${c.name}" (active in ${c.markets.join(", ")}):
 ${headlines || "No recent news found."}
-
 Return ONLY valid JSON (no markdown):
 {
   "sentiment": "positive|neutral|negative",
@@ -91,7 +88,6 @@ Return ONLY valid JSON (no markdown):
 }`;
 }
 
-// ── Shimmer ───────────────────────────────────────────────────────────
 function Shimmer({ w, h = 13, radius = 3, style = {} }) {
   return (
     <div style={{
@@ -104,13 +100,42 @@ function Shimmer({ w, h = 13, radius = 3, style = {} }) {
   );
 }
 
-// ── Main ──────────────────────────────────────────────────────────────
+function IndicatorBlock({ label, data, unit = "" }) {
+  if (!data) return (
+    <div style={{ background: T.white, padding: "16px 18px" }}>
+      <div style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: T.textMuted, marginBottom: 8 }}>{label}</div>
+      <Shimmer w={60} h={22} />
+    </div>
+  );
+  if (data.error) return (
+    <div style={{ background: T.white, padding: "16px 18px" }}>
+      <div style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: T.textMuted, marginBottom: 8 }}>{label}</div>
+      <div style={{ fontSize: 11, color: T.textMuted }}>Unavailable</div>
+    </div>
+  );
+  return (
+    <div style={{ background: T.white, padding: "16px 18px" }}>
+      <div style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: T.textMuted, marginBottom: 8 }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
+        <span style={{ fontSize: 22, fontWeight: 300, color: T.forest }}>{data.value}{unit}</span>
+        {data.change && (
+          <span style={{ fontSize: 11, fontWeight: 500, color: data.direction === "up" ? "#2D6A4F" : data.direction === "down" ? "#7A3A3A" : T.textMuted }}>
+            {data.direction === "up" ? "↑" : data.direction === "down" ? "↓" : "→"} {data.change}
+          </span>
+        )}
+      </div>
+      <div style={{ fontSize: 10, color: T.textMuted }}>{data.period} · OECD</div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [market,     setMarket]     = useState("All");
   const [brief,      setBrief]      = useState(null);
   const [briefLoad,  setBriefLoad]  = useState(true);
   const [cards,      setCards]      = useState({});
   const [stocks,     setStocks]     = useState({});
+  const [indicators, setIndicators] = useState(null);
   const [expanded,   setExpanded]   = useState(null);
   const fetched      = useRef(new Set());
   const briefFetched = useRef(new Set());
@@ -120,12 +145,17 @@ export default function Home() {
   const loaded  = visible.filter(c => cards[c.name] && cards[c.name] !== "loading").length;
   const pct     = visible.length ? (loaded / visible.length) * 100 : 0;
 
-  // Real stock prices
+  // Stocks
   useEffect(() => {
     fetch("/api/stocks").then(r => r.json()).then(setStocks).catch(() => {});
   }, []);
 
-  // Market brief
+  // OECD indicators — fetch once
+  useEffect(() => {
+    fetch("/api/indicators").then(r => r.json()).then(setIndicators).catch(() => {});
+  }, []);
+
+  // Brief
   useEffect(() => {
     if (briefFetched.current.has(market)) return;
     briefFetched.current.add(market);
@@ -135,37 +165,36 @@ export default function Home() {
       .catch(() => setBriefLoad(false));
   }, [market]);
 
-  // Company cards: fetch real news first, then AI insight based on actual headlines
+  // Company cards
   useEffect(() => {
     const toFetch = visible.filter(c => !fetched.current.has(c.name));
     toFetch.forEach(c => {
       fetched.current.add(c.name);
       setCards(p => ({ ...p, [c.name]: "loading" }));
     });
-
     toFetch.forEach((c, i) => {
       setTimeout(async () => {
         try {
-          // Step 1: fetch real news from RSS
           const { items } = await fetchNews(c.name);
-
-          // Step 2: ask AI for insight based on real headlines (rate-limited)
-          let sentiment = "neutral";
-          let insight   = "";
+          let sentiment = "neutral", insight = "";
           try {
             const ai = await callProxy(insightPrompt(c, items), 200);
             sentiment = ai.sentiment || "neutral";
             insight   = ai.insight   || "";
           } catch (_) {}
-
           setCards(p => ({ ...p, [c.name]: { items, sentiment, insight } }));
-        } catch (err) {
+        } catch {
           setCards(p => ({ ...p, [c.name]: "error" }));
           fetched.current.delete(c.name);
         }
-      }, i * 4000); // 4s stagger — news fetch is fast, only AI needs rate limit spacing
+      }, i * 4000);
     });
   }, [market]);
+
+  // Which markets to show indicators for
+  const indicatorMarkets = market === "All"
+    ? ["Denmark","Sweden","Norway","Finland"]
+    : [market];
 
   return (
     <>
@@ -176,7 +205,11 @@ export default function Home() {
 
       <style>{`
         .fade { animation: fadeUp .3s ease forwards; }
-        .card { transition: box-shadow .2s, border-color .2s; }
+        .card {
+          transition: box-shadow .2s, border-color .2s;
+          display: grid;
+          grid-template-rows: 1fr auto auto;
+        }
         .card:hover { box-shadow: 0 2px 16px rgba(28,43,43,.08); border-color: #7A5A5A !important; }
         .mkt-btn { transition: all .15s; cursor: pointer; font-family: inherit; }
         .mkt-btn:hover { background: #E3DDD4 !important; }
@@ -242,7 +275,7 @@ export default function Home() {
             </div>
           ) : brief ? (
             <div className="fade">
-              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 24, alignItems: "start", marginBottom: 24 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 24, alignItems: "start", marginBottom: 28 }}>
                 <p style={{ fontSize: 15, lineHeight: 1.8, color: T.textMid, maxWidth: 700 }}>{brief.summary}</p>
                 {brief.trend && (
                   <div style={{ padding: "10px 18px", background: T.forest, color: T.cream, fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
@@ -250,6 +283,29 @@ export default function Home() {
                   </div>
                 )}
               </div>
+
+              {/* OECD Indicators */}
+              <div style={{ marginBottom: 28 }}>
+                <div style={{ fontSize: 10, letterSpacing: "0.3em", textTransform: "uppercase", color: T.textMuted, marginBottom: 14 }}>
+                  Market Indicators — Official OECD Data
+                </div>
+                {indicatorMarkets.map(mkt => (
+                  <div key={mkt} style={{ marginBottom: indicatorMarkets.length > 1 ? 16 : 0 }}>
+                    {indicatorMarkets.length > 1 && (
+                      <div style={{ fontSize: 10, color: T.textMuted, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 8 }}>
+                        {FLAGS[mkt]} {mkt}
+                      </div>
+                    )}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 1, background: T.border, border: `1px solid ${T.border}` }}>
+                      <IndicatorBlock label="Consumer Confidence" data={indicators?.[mkt]?.consumerConfidence} />
+                      <IndicatorBlock label="CPI Inflation" data={indicators?.[mkt]?.cpi} unit="%" />
+                      <IndicatorBlock label="Retail Sales Growth" data={indicators?.[mkt]?.retailSales} unit="%" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Industry context */}
               {brief.industryNews?.length > 0 && (
                 <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 20 }}>
                   <div style={{ fontSize: 10, letterSpacing: "0.3em", textTransform: "uppercase", color: T.textMuted, marginBottom: 14 }}>Industry Context</div>
@@ -278,7 +334,7 @@ export default function Home() {
           <span style={{ fontSize: 11, color: T.textMuted }}>{visible.length} companies tracked</span>
         </div>
 
-        {/* Company grid */}
+        {/* Company grid — equal height cards with pinned footer */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: 2, background: T.border }}>
           {visible.map(c => {
             const d        = cards[c.name];
@@ -293,6 +349,7 @@ export default function Home() {
                 background: c.isMatas ? "#F5F0EA" : T.white,
                 border: `1px solid ${c.isMatas ? T.mauveDark : "transparent"}`,
               }}>
+                {/* Card body — grows to fill */}
                 <div style={{ padding: "20px 22px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 12 }}>
                     <div>
@@ -304,8 +361,6 @@ export default function Home() {
                         <span style={{ fontSize: 12 }}>{c.markets.map(m => FLAGS[m]).join(" ")}</span>
                       </div>
                     </div>
-
-                    {/* Real stock */}
                     {c.ticker && (
                       <div style={{ textAlign: "right", flexShrink: 0 }}>
                         {!stock ? (
@@ -325,7 +380,6 @@ export default function Home() {
                     )}
                   </div>
 
-                  {/* Loading / error / content */}
                   {!d || d === "loading" ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <Shimmer w="90%" h={13} /><Shimmer w="65%" h={13} />
@@ -334,14 +388,12 @@ export default function Home() {
                     <span style={{ fontSize: 12, color: T.textMuted }}>Failed to load — refresh to retry</span>
                   ) : (
                     <div className="fade">
-                      {/* Latest headline preview */}
-                      {hasNews && (
+                      {hasNews ? (
                         <p style={{ fontSize: 13, color: T.textMid, lineHeight: 1.6, marginBottom: 12 }}>
                           {d.items[0].title}
                           <span style={{ fontSize: 10, color: T.textMuted, marginLeft: 8 }}>{d.items[0].ago}</span>
                         </p>
-                      )}
-                      {!hasNews && (
+                      ) : (
                         <p style={{ fontSize: 12, color: T.textMuted, marginBottom: 12 }}>No recent news found</p>
                       )}
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -360,24 +412,24 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* Expand */}
-                {isLoaded && (
-                  <button className="expand-btn" onClick={() => setExpanded(isOpen ? null : c.name)} style={{
-                    width: "100%", padding: "10px 22px",
-                    background: T.creamDark, borderTop: `1px solid ${T.border}`,
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
-                    color: T.textMuted, fontSize: 10, letterSpacing: "0.15em", textTransform: "uppercase",
-                  }}>
-                    <span>{isOpen ? "Hide detail" : "Show detail"}</span>
-                    <span style={{ fontSize: 14 }}>{isOpen ? "−" : "+"}</span>
-                  </button>
-                )}
+                {/* Pinned footer — always at bottom */}
+                <div style={{ marginTop: "auto" }}>
+                  {isLoaded && (
+                    <button className="expand-btn" onClick={() => setExpanded(isOpen ? null : c.name)} style={{
+                      width: "100%", padding: "10px 22px",
+                      background: T.creamDark, borderTop: `1px solid ${T.border}`,
+                      display: "flex", justifyContent: "space-between", alignItems: "center",
+                      color: T.textMuted, fontSize: 10, letterSpacing: "0.15em", textTransform: "uppercase",
+                    }}>
+                      <span>{isOpen ? "Hide detail" : "Show detail"}</span>
+                      <span style={{ fontSize: 14 }}>{isOpen ? "−" : "+"}</span>
+                    </button>
+                  )}
+                </div>
 
-                {/* Expanded */}
+                {/* Expanded detail */}
                 {isOpen && isLoaded && (
                   <div className="fade" style={{ borderTop: `1px solid ${T.border}`, background: T.white }}>
-
-                    {/* AI strategic insight — based on real headlines */}
                     {d.insight && (
                       <div style={{
                         padding: "14px 22px", background: "#F5F0EA",
@@ -390,8 +442,6 @@ export default function Home() {
                         {d.insight}
                       </div>
                     )}
-
-                    {/* Real news items */}
                     {hasNews ? d.items.map((n, i) => (
                       <a key={i} href={n.link} target="_blank" rel="noopener noreferrer"
                         className="news-row"
@@ -404,9 +454,7 @@ export default function Home() {
                       >
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 13, color: T.forest, marginBottom: 3, lineHeight: 1.4 }}>{n.title}</div>
-                          {n.source && (
-                            <div style={{ fontSize: 10, color: T.textMuted }}>{n.source}</div>
-                          )}
+                          {n.source && <div style={{ fontSize: 10, color: T.textMuted }}>{n.source}</div>}
                         </div>
                         <div style={{ fontSize: 10, color: T.textMuted, whiteSpace: "nowrap", flexShrink: 0, marginLeft: 14 }}>{n.ago}</div>
                       </a>
