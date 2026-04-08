@@ -1,20 +1,23 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
-  background: #0b0b0f;
-  color: #e2ddd5;
-  font-family: 'Georgia', serif;
+  background: #EDE8E0;
+  color: #1C2B2B;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
 }
 
-::-webkit-scrollbar { width: 5px; }
-::-webkit-scrollbar-thumb { background: #2a2520; border-radius: 3px; }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #EDE8E0; }
+::-webkit-scrollbar-thumb { background: #C8BDB5; border-radius: 2px; }
 
 @keyframes shimmer {
-  0%   { background-position: -400px 0; }
-  100% { background-position:  400px 0; }
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
 }
 
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: none; }
 }
