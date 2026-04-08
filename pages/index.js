@@ -19,6 +19,32 @@ const COMPETITORS = [
   { name: "Emotion",          markets: ["Finland"],                  ticker: null },
 ];
 
+const SEARCH_QUERIES = {
+  "Matas":            '"Matas" butik OR webshop OR skønhed OR beauty Denmark',
+  "KICKS":            '"KICKS" beauty retailer Scandinavia OR Sweden OR Norway OR Finland',
+  "Normal":           '"Normal" discount retailer Denmark OR Sweden OR Norway skønhed',
+  "Lyko":             '"Lyko" beauty Sweden hair',
+  "Sephora":          '"Sephora" beauty Denmark OR Nordic',
+  "Stockmann":        '"Stockmann" department store Finland beauty',
+  "The Body Shop":    '"The Body Shop" beauty retail store',
+  "Åhléns":           '"Åhléns" varuhus Sweden beauty',
+  "Apotea":           '"Apotea" apotek online Sweden',
+  "Caia":             '"Caia Cosmetics" OR "Caia beauty" Sweden',
+  "Fredrik & Louisa": '"Fredrik og Louisa" OR "Fredrik & Louisa" Norge beauty',
+  "Vita":             '"Vita" apotek OR helsekost Norway',
+  "Ruohonjuuri":      '"Ruohonjuuri" Finland luomu beauty',
+  "Sokos":            '"Sokos" tavaratalo Finland beauty kosmetiikka',
+  "Emotion":          '"Emotion" parfymeri Finland beauty',
+};
+
+const NOISE_FILTERS = {
+  "Normal":   ["new normal","back to normal","return to normal","perfectly normal","paranormal","subnormal","abnormal","feels normal"],
+  "Vita":     ["vita coco","vita liberata","dolce vita","acqua di vita","vita nuova"],
+  "Emotion":  ["emotional","emotions","emotionally","emotional support"],
+  "Caia":     ["caia archon","caia island"],
+  "Sokos":    ["sokos hotel"],
+};
+
 const MARKETS = ["All","Denmark","Sweden","Norway","Finland"];
 const FLAGS   = { Denmark:"🇩🇰", Sweden:"🇸🇪", Norway:"🇳🇴", Finland:"🇫🇮" };
 
@@ -44,6 +70,62 @@ const T = {
   white:     "#FAFAF8",
 };
 
+// ── Helpers ───────────────────────────────────────────────────────────
+
+function extract(xml, tag) {
+  const m =
+    xml.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`)) ||
+    xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`));
+  return m ? m[1].trim() : "";
+}
+
+function stripTags(s) {
+  return s.replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'").trim();
+}
+
+function timeAgo(date) {
+  const diff = Date.now() - date.getTime();
+  const h = Math.floor(diff / 3600000);
+  const d = Math.floor(diff / 86400000);
+  if (h < 1)  return "Just now";
+  if (h < 24) return `${h}h ago`;
+  if (d < 7)  return `${d}d ago`;
+  return date.toLocaleDateString("en-GB", { day:"numeric", month:"short" });
+}
+
+function parseRSS(xml, company) {
+  const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const noise = (NOISE_FILTERS[company] || []);
+  const items = [];
+  const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+  let match;
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const block   = match[1];
+    const title   = stripTags(extract(block, "title"));
+    const link    = extract(block, "link") || extract(block, "guid");
+    const pubDate = extract(block, "pubDate");
+    const source  = stripTags(extract(block, "source"));
+    if (!title || !link) continue;
+    const date = pubDate ? new Date(pubDate) : null;
+    if (date && date.getTime() < thirtyDaysAgo) continue;
+    const tl = title.toLowerCase();
+    if (noise.some(n => tl.includes(n))) continue;
+    items.push({ title, link, source, date: date?.toISOString() || null, ago: date ? timeAgo(date) : "" });
+    if (items.length >= 5) break;
+  }
+  return items;
+}
+
+async function fetchNewsClient(company) {
+  const query = SEARCH_QUERIES[company] || `"${company}" beauty retail Nordic`;
+  const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
+  const proxyUrl = `/api/news?url=${encodeURIComponent(rssUrl)}`;
+  const r = await fetch(proxyUrl);
+  if (!r.ok) return [];
+  const xml = await r.text();
+  return parseRSS(xml, company);
+}
+
 async function callProxy(prompt, maxTokens = 800) {
   const res = await fetch("/api/claude", {
     method: "POST",
@@ -51,12 +133,6 @@ async function callProxy(prompt, maxTokens = 800) {
     body: JSON.stringify({ prompt, maxTokens }),
   });
   if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
-
-async function fetchNews(company) {
-  const res = await fetch(`/api/news?company=${encodeURIComponent(company)}`);
-  if (!res.ok) return { items: [] };
   return res.json();
 }
 
@@ -134,6 +210,7 @@ function IndicatorBlock({ label, data, unit = "" }) {
   );
 }
 
+// ── Main ──────────────────────────────────────────────────────────────
 export default function Home() {
   const [market,     setMarket]     = useState("All");
   const [brief,      setBrief]      = useState(null);
@@ -176,7 +253,7 @@ export default function Home() {
     toFetch.forEach((c, i) => {
       setTimeout(async () => {
         try {
-          const { items } = await fetchNews(c.name);
+          const items = await fetchNewsClient(c.name);
           let sentiment = "neutral", insight = "";
           try {
             const ai = await callProxy(insightPrompt(c, items), 200);
@@ -275,8 +352,6 @@ export default function Home() {
             </div>
           ) : brief ? (
             <div className="fade">
-
-              {/* Summary + trend pill */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 24, alignItems: "start", marginBottom: 28 }}>
                 <p style={{ fontSize: 15, lineHeight: 1.8, color: T.textMid, maxWidth: 700 }}>{brief.summary}</p>
                 {brief.trend && (
@@ -286,7 +361,7 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Market Indicators */}
+              {/* Indicators */}
               <div style={{ marginBottom: 28 }}>
                 <div style={{ fontSize: 10, letterSpacing: "0.3em", textTransform: "uppercase", color: T.textMuted, marginBottom: 14 }}>
                   Market Indicators — OECD & World Bank Official Data
@@ -298,27 +373,10 @@ export default function Home() {
                         {FLAGS[mkt]} {mkt}
                       </div>
                     )}
-                    <div style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(3, 1fr)",
-                      gap: 1,
-                      background: T.border,
-                      border: `1px solid ${T.border}`,
-                    }}>
-                      <IndicatorBlock
-                        label="Consumer Confidence"
-                        data={indicators?.[mkt]?.consumerConfidence}
-                      />
-                      <IndicatorBlock
-                        label="CPI Inflation"
-                        data={indicators?.[mkt]?.cpi}
-                        unit="%"
-                      />
-                      <IndicatorBlock
-                        label="Unemployment"
-                        data={indicators?.[mkt]?.unemployment}
-                        unit="%"
-                      />
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1, background: T.border, border: `1px solid ${T.border}` }}>
+                      <IndicatorBlock label="Consumer Confidence" data={indicators?.[mkt]?.consumerConfidence} />
+                      <IndicatorBlock label="CPI Inflation"       data={indicators?.[mkt]?.cpi}               unit="%" />
+                      <IndicatorBlock label="Unemployment"        data={indicators?.[mkt]?.unemployment}      unit="%" />
                     </div>
                   </div>
                 ))}
@@ -368,7 +426,7 @@ export default function Home() {
                 background: c.isMatas ? "#F5F0EA" : T.white,
                 border: `1px solid ${c.isMatas ? T.mauveDark : "transparent"}`,
               }}>
-                {/* Card body */}
+                {/* Body */}
                 <div style={{ padding: "20px 22px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 12 }}>
                     <div>
@@ -380,8 +438,6 @@ export default function Home() {
                         <span style={{ fontSize: 12 }}>{c.markets.map(m => FLAGS[m]).join(" ")}</span>
                       </div>
                     </div>
-
-                    {/* Real stock price */}
                     {c.ticker && (
                       <div style={{ textAlign: "right", flexShrink: 0 }}>
                         {!stock ? (
@@ -401,7 +457,6 @@ export default function Home() {
                     )}
                   </div>
 
-                  {/* Content */}
                   {!d || d === "loading" ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       <Shimmer w="90%" h={13} /><Shimmer w="65%" h={13} />
@@ -449,7 +504,7 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* Expanded detail */}
+                {/* Expanded */}
                 {isOpen && isLoaded && (
                   <div className="fade" style={{ borderTop: `1px solid ${T.border}`, background: T.white }}>
                     {d.insight && (
