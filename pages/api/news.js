@@ -1,90 +1,80 @@
-function googleNewsRSS(query) {
-  return `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en&gl=US&ceid=US:en`;
-}
-
-function parseRSS(xml) {
-  const items = [];
-  const itemRegex = /<item>([\s\S]*?)<\/item>/g;
-  let match;
-  while ((match = itemRegex.exec(xml)) !== null) {
-    const item = match[1];
-    const title   = (item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/) || item.match(/<title>(.*?)<\/title>/))?.[1] || "";
-    const link    = (item.match(/<link>(.*?)<\/link>/) || [])[1] || "";
-    const pubDate = (item.match(/<pubDate>(.*?)<\/pubDate>/) || [])[1] || "";
-    const source  = (item.match(/<source[^>]*>(.*?)<\/source>/) || [])[1] || "";
-    if (title && link) {
-      items.push({ title: title.trim(), link: link.trim(), pubDate, source: source.trim() });
-    }
-  }
-  return items;
-}
-
-function timeAgo(dateStr) {
-  if (!dateStr) return "";
-  try {
-    const d = new Date(dateStr);
-    const diff = Date.now() - d.getTime();
-    const hours = Math.floor(diff / 3600000);
-    const days  = Math.floor(hours / 24);
-    if (hours < 1)  return "Just now";
-    if (hours < 24) return `${hours}h ago`;
-    if (days < 30)  return `${days}d ago`;
-    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-  } catch { return ""; }
-}
-
-function isWithinDays(dateStr, days) {
-  try {
-    const d = new Date(dateStr);
-    return (Date.now() - d.getTime()) < days * 86400000;
-  } catch { return false; }
-}
-
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).end();
-  const { company } = req.query;
-  if (!company) return res.status(400).json({ error: "company required" });
 
-  const queries = [
-    `"${company}" beauty retail`,
-    `"${company}" Nordic`,
-  ];
+  const { company } = req.query;
+  if (!company) return res.status(400).json({ error: "Missing company" });
+
+  const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
   try {
-    const results = await Promise.allSettled(
-      queries.map(q =>
-        fetch(googleNewsRSS(q), { headers: { "User-Agent": "Mozilla/5.0" } })
-          .then(r => r.text())
-          .then(parseRSS)
-      )
-    );
+    const query = encodeURIComponent(`"${company}" beauty retail`);
+    const url = `https://news.google.com/rss/search?q=${query}&hl=en-US&gl=US&ceid=US:en`;
 
-    // Merge, deduplicate by title, filter last 30 days, sort latest first
-    const seen = new Set();
-    const items = [];
-    results.forEach(r => {
-      if (r.status !== "fulfilled") return;
-      r.value.forEach(item => {
-        const key = item.title.slice(0, 60);
-        if (seen.has(key)) return;
-        seen.add(key);
-        items.push({
-          ...item,
-          timeAgo: timeAgo(item.pubDate),
-          recent: isWithinDays(item.pubDate, 30),
-          timestamp: new Date(item.pubDate).getTime() || 0,
-        });
-      });
+    const r = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0" },
     });
 
-    items.sort((a, b) => b.timestamp - a.timestamp);
-    const filtered = items.filter(i => i.recent).slice(0, 6);
-    // If nothing in last 30 days, return latest 4 regardless
-    const final = filtered.length > 0 ? filtered : items.slice(0, 4);
+    if (!r.ok) throw new Error(`RSS fetch failed: ${r.status}`);
 
-    res.setHeader("Cache-Control", "s-maxage=1800, stale-while-revalidate");
-    return res.status(200).json({ company, items: final });
+    const xml = await r.text();
+
+    // Parse items from RSS XML
+    const items = [];
+    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+    let match;
+
+    while ((match = itemRegex.exec(xml)) !== null) {
+      const block = match[1];
+
+      const title   = stripTags(extract(block, "title"));
+      const link    = extract(block, "link") || extract(block, "guid");
+      const pubDate = extract(block, "pubDate");
+      const source  = extract(block, "source") || extractAttr(block, "source", "url") || "";
+
+      if (!title || !link) continue;
+
+      const date = pubDate ? new Date(pubDate) : null;
+      if (date && date.getTime() < thirtyDaysAgo) continue;
+
+      items.push({
+        title,
+        link,
+        source: stripTags(source),
+        date: date ? date.toISOString() : null,
+        ago: date ? timeAgo(date) : "",
+      });
+
+      if (items.length >= 5) break;
+    }
+
+    return res.status(200).json({ company, items });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    console.error("News fetch error:", err.message);
+    return res.status(500).json({ error: err.message, items: [] });
   }
+}
+
+function extract(xml, tag) {
+  const m = xml.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`))||
+            xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`));
+  return m ? m[1].trim() : "";
+}
+
+function extractAttr(xml, tag, attr) {
+  const m = xml.match(new RegExp(`<${tag}[^>]*${attr}="([^"]*)"[^>]*>`));
+  return m ? m[1] : "";
+}
+
+function stripTags(s) {
+  return s.replace(/<[^>]+>/g, "").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'").trim();
+}
+
+function timeAgo(date) {
+  const diff = Date.now() - date.getTime();
+  const h = Math.floor(diff / 3600000);
+  const d = Math.floor(diff / 86400000);
+  if (h < 1)  return "Just now";
+  if (h < 24) return `${h}h ago`;
+  if (d < 7)  return `${d}d ago`;
+  return date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
