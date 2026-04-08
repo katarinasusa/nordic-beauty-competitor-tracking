@@ -6,9 +6,31 @@ export default async function handler(req, res) {
 
   const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
+  // More specific search queries for ambiguous company names
+  const SEARCH_OVERRIDES = {
+    "Normal":           '"Normal" retailer beauty Denmark',
+    "Vita":             '"Vita" beauty retailer Norway',
+    "Emotion":          '"Emotion" beauty retailer Finland',
+    "Sokos":            '"Sokos" department store Finland beauty',
+    "Caia":             '"Caia Cosmetics" beauty Sweden',
+    "Apotea":           '"Apotea" online pharmacy Sweden beauty',
+    "Fredrik & Louisa": '"Fredrik og Louisa" OR "Fredrik & Louisa" beauty Norway',
+    "The Body Shop":    '"The Body Shop" beauty retail',
+    "Åhléns":           '"Åhléns" department store Sweden beauty',
+    "Ruohonjuuri":      '"Ruohonjuuri" beauty Finland',
+    "KICKS":            '"KICKS" beauty retailer Scandinavia',
+    "Lyko":             '"Lyko" beauty retailer Sweden',
+    "Stockmann":        '"Stockmann" department store Finland',
+    "Matas":            '"Matas" beauty retailer Denmark',
+    "Sephora":          '"Sephora" beauty retailer Nordic OR Denmark',
+  };
+
+  const query = SEARCH_OVERRIDES[company]
+    || `"${company}" beauty retailer Nordic`;
+
   try {
-    const query = encodeURIComponent(`"${company}" beauty retail`);
-    const url = `https://news.google.com/rss/search?q=${query}&hl=en-US&gl=US&ceid=US:en`;
+    const encoded = encodeURIComponent(query);
+    const url = `https://news.google.com/rss/search?q=${encoded}&hl=en-US&gl=US&ceid=US:en`;
 
     const r = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0" },
@@ -17,8 +39,6 @@ export default async function handler(req, res) {
     if (!r.ok) throw new Error(`RSS fetch failed: ${r.status}`);
 
     const xml = await r.text();
-
-    // Parse items from RSS XML
     const items = [];
     const itemRegex = /<item>([\s\S]*?)<\/item>/g;
     let match;
@@ -36,12 +56,15 @@ export default async function handler(req, res) {
       const date = pubDate ? new Date(pubDate) : null;
       if (date && date.getTime() < thirtyDaysAgo) continue;
 
+      // Filter out clearly irrelevant results for ambiguous names
+      if (isIrrelevant(company, title)) continue;
+
       items.push({
         title,
         link,
         source: stripTags(source),
-        date: date ? date.toISOString() : null,
-        ago: date ? timeAgo(date) : "",
+        date:   date ? date.toISOString() : null,
+        ago:    date ? timeAgo(date) : "",
       });
 
       if (items.length >= 5) break;
@@ -54,9 +77,26 @@ export default async function handler(req, res) {
   }
 }
 
+// Post-filter to catch noise that slips through
+function isIrrelevant(company, title) {
+  const t = title.toLowerCase();
+  const c = company.toLowerCase();
+
+  const NOISE = {
+    "normal": ["the new normal", "new normal", "back to normal", "return to normal", "feels normal", "seems normal", "perfectly normal", "abnormal", "paranormal", "new normal", "subnormal"],
+    "vita":   ["vita coco", "vita liberata", "acqua di vita", "vita nuova", "dolce vita"],
+    "emotion":["emotional", "emotions", "emotional intelligence", "emotionally"],
+    "caia":   ["caia archon"],
+  };
+
+  const noiseTerms = NOISE[c] || [];
+  return noiseTerms.some(term => t.includes(term));
+}
+
 function extract(xml, tag) {
-  const m = xml.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`))||
-            xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`));
+  const m =
+    xml.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`)) ||
+    xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`));
   return m ? m[1].trim() : "";
 }
 
@@ -66,7 +106,14 @@ function extractAttr(xml, tag, attr) {
 }
 
 function stripTags(s) {
-  return s.replace(/<[^>]+>/g, "").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'").trim();
+  return s
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
 }
 
 function timeAgo(date) {
