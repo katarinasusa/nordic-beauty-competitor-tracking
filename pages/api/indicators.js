@@ -1,20 +1,24 @@
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).end();
 
+  // Consumer Confidence — real figures from national statistics / Trading Economics
+  // Note: Different scales per country — labeled accordingly
+  // Denmark: EU/ECFIN scale (-100 to +100, long-term avg ~0)
+  // Sweden: National index (0–200, long-term avg ~100)
+  // Norway: Finans Norge quarterly index (negative = pessimistic)
+  // Finland: Statistics Finland / EU scale (-100 to +100)
+  const CONSUMER_CONFIDENCE = {
+    Denmark: { value: "-13.8", change: "-0.7", direction: "down", period: "2026-03", source: "Statistics Denmark" },
+    Sweden:  { value: "95.2",  change: "-1.1", direction: "down", period: "2026-03", source: "Statistics Sweden"  },
+    Norway:  { value: "-9.4",  change: "-4.7", direction: "down", period: "2026-Q1", source: "Finans Norge"        },
+    Finland: { value: "-11.5", change: "-1.0", direction: "down", period: "2026-03", source: "Statistics Finland"  },
+  };
+
   const COUNTRIES = {
     Denmark: "DNK",
     Sweden:  "SWE",
     Norway:  "NOR",
     Finland: "FIN",
-  };
-
-  // OECD Consumer Confidence — latest published figures (updated monthly)
-  // Source: OECD CLI Amplitude-adjusted, March 2025
-  const CONSUMER_CONFIDENCE = {
-    Denmark: { value: "100.4", change: "+0.3", direction: "up",   period: "2025-02", source: "OECD" },
-    Sweden:  { value: "98.2",  change: "-0.2", direction: "down", period: "2025-02", source: "OECD" },
-    Norway:  { value: "100.1", change: "+0.1", direction: "up",   period: "2025-02", source: "OECD" },
-    Finland: { value: "97.8",  change: "-0.4", direction: "down", period: "2025-02", source: "OECD" },
   };
 
   async function fetchWorldBank(countryCode, indicator) {
