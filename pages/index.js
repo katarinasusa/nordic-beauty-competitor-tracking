@@ -331,32 +331,26 @@ export default function Home() {
         <meta name="viewport" content="width=device-width,initial-scale=1" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="true" />
-        <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wght@0,6..12,300;0,6..12,400;0,6..12,500;0,6..12,600;1,6..12,300&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet" />
       </Head>
       <style>{`
         *{box-sizing:border-box;}
-        body{font-family:'Nunito Sans','Helvetica Neue',sans-serif!important;}
+        body{font-family:'Jakarta Sans','Helvetica Neue',sans-serif!important;}
         @keyframes shimmer{0%{background-position:-600px 0}100%{background-position:600px 0}}
         @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
         .fade{animation:fadeUp .3s ease forwards;}
         .card{transition:box-shadow .2s,border-color .2s;display:grid;grid-template-rows:1fr auto auto;}
         .card:hover{box-shadow:0 2px 20px rgba(28,43,43,.07);border-color:#7A5A5A!important;}
-        .mkt-btn{transition:all .15s;cursor:pointer;font-family:'Nunito Sans',sans-serif;}
+        .mkt-btn{transition:all .15s;cursor:pointer;font-family:'Jakarta Sans',sans-serif;}
         .mkt-btn:hover{background:#E3DDD4!important;}
-        .expand-btn{transition:background .15s;cursor:pointer;border:none;font-family:'Nunito Sans',sans-serif;}
+        .expand-btn{transition:background .15s;cursor:pointer;border:none;font-family:'Jakarta Sans',sans-serif;}
         .expand-btn:hover{background:#D8D2CA!important;}
         .news-row{transition:background .15s;display:flex;text-decoration:none;}
         .news-row:hover{background:#EDE8E0!important;}
       `}</style>
 
-      <div style={{background:T.forest,color:T.cream,padding:"0 40px",display:"flex",alignItems:"stretch",justifyContent:"space-between",position:"sticky",top:0,zIndex:50}}>
-        <div style={{display:"flex",alignItems:"center",padding:"18px 0"}}>
-          <div>
-            <div style={{fontSize:9,letterSpacing:"0.5em",color:T.mauveLight,textTransform:"uppercase",marginBottom:5,fontWeight:400}}>MATAS GROUP</div>
-            <div style={{fontSize:16,letterSpacing:"0.18em",textTransform:"uppercase",color:T.cream,fontWeight:300}}>Nordic Beauty Intelligence</div>
-          </div>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:24}}>
+     <div style={{background:T.forest,color:T.cream,padding:"0 32px",display:"flex",alignItems:"stretch",justifyContent:"space-between",position:"sticky",top:0,zIndex:50}}>
+        <div style={{display:"flex",alignItems:"center",gap:24,padding:"14px 0"}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontSize:11,color:T.mauveLight,fontWeight:300}}>{loaded}/{visible.length} loaded</span>
             <div style={{width:80,height:2,background:"rgba(255,255,255,0.12)",borderRadius:1,overflow:"hidden"}}>
@@ -365,20 +359,53 @@ export default function Home() {
           </div>
           <div style={{fontSize:11,color:T.mauveLight,borderLeft:"1px solid rgba(255,255,255,0.12)",paddingLeft:24,fontWeight:300}}>{today}</div>
         </div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",flex:1}}>
+          <div style={{fontSize:9,letterSpacing:"0.5em",color:T.mauveLight,textTransform:"uppercase",fontWeight:400}}>Nordic Beauty Intelligence</div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",padding:"14px 0"}}>
+          <div style={{textAlign:"right",lineHeight:1.15}}>
+            <div style={{fontSize:14,letterSpacing:"0.3em",textTransform:"uppercase",color:T.cream,fontWeight:600}}>M A T A S</div>
+            <div style={{fontSize:14,letterSpacing:"0.3em",textTransform:"uppercase",color:T.cream,fontWeight:600}}>G R O U P</div>
+          </div>
+        </div>
       </div>
 
-      <div style={{background:T.cream,borderBottom:`1px solid ${T.border}`,padding:"0 40px",display:"flex"}}>
-        {MARKETS.map(m => (
-          <button key={m} className="mkt-btn" onClick={()=>setMarket(m)} style={{
-            padding:"13px 20px",background:"transparent",border:"none",
-            borderBottom:market===m?`2px solid ${T.forest}`:"2px solid transparent",
-            color:market===m?T.forest:T.textMuted,
-            fontSize:11,letterSpacing:"0.18em",textTransform:"uppercase",
-            fontWeight:market===m?600:400,marginBottom:-1,
-          }}>
-            {m!=="All"?FLAGS[m]+" ":""}{m}
-          </button>
-        ))}
+     <div style={{background:T.cream,borderBottom:`1px solid ${T.border}`,padding:"0 32px",display:"flex",alignItems:"stretch",justifyContent:"space-between"}}>
+        <div style={{display:"flex"}}>
+          {MARKETS.map(m => (
+            <button key={m} className="mkt-btn" onClick={()=>setMarket(m)} style={{
+              padding:"13px 18px",background:"transparent",border:"none",
+              borderBottom:market===m?`2px solid ${T.forest}`:"2px solid transparent",
+              color:market===m?T.forest:T.textMuted,
+              fontSize:11,letterSpacing:"0.18em",textTransform:"uppercase",
+              fontWeight:market===m?600:400,marginBottom:-1,
+            }}>
+              {m}
+            </button>
+          ))}
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0"}}>
+          {["Denmark","Sweden","Norway","Finland"].map(m => (
+            <button
+              key={m}
+              onClick={()=>setMarket(market===m?"All":m)}
+              title={m}
+              style={{
+                width:36,height:36,borderRadius:"50%",border:"none",
+                cursor:"pointer",padding:0,background:"transparent",
+                fontSize:22,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",
+                outline:market===m?`3px solid ${T.forest}`:"3px solid transparent",
+                outlineOffset:2,
+                transform:market===m?"scale(1.1)":"scale(1)",
+                transition:"outline .15s,transform .15s",
+              }}
+              onMouseEnter={e=>e.currentTarget.style.transform="scale(1.15)"}
+              onMouseLeave={e=>e.currentTarget.style.transform=market===m?"scale(1.1)":"scale(1)"}
+            >
+              {FLAGS[m]}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div style={{maxWidth:1400,margin:"0 auto",padding:"36px 40px"}}>
