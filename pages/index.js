@@ -266,6 +266,97 @@ function IndicatorBlock({ label, data, unit="" }) {
     </div>
   );
 }
+function IndustryNews({ market }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const fetched = useRef({});
+
+  useEffect(() => {
+    if (fetched.current[market]) return;
+    fetched.current[market] = true;
+    setLoading(true);
+    setItems([]);
+
+    const queries = market === "All"
+      ? ["Nordic beauty retail strategy results expansion","Scandinavian beauty retailer results growth"]
+      : {
+          Denmark: ["Danish beauty retail strategy results","dansk skønhed detailhandel vækst regnskab"],
+          Sweden:  ["Swedish beauty retail strategy results","svensk skönhet detaljhandel strategi"],
+          Norway:  ["Norwegian beauty retail strategy results","norsk skjønnhet detaljhandel strategi"],
+          Finland: ["Finnish beauty retail strategy results","suomalainen kauneus vähittäiskauppa strategia"],
+        }[market] || [];
+
+    const BUSINESS_SIGNALS = ["revenue","results","profit","growth","expansion","opens","closes","strategy","acquisition","merger","invest","appoints","CEO","launch","partnership","report","quarter","annual","omsättning","resultat","tillväxt","strategi","regnskab","vækst","liikevaihto","tulos","strategia","omsetning","vekst"];
+    const CONSUMER_NOISE = ["£","$","€","deal","save","discount","cheap","how to","tutorial","review","top 10","gift guide","sale","% off","celebrity","influencer","tiktok","viral","appointments"];
+
+    function parseIndustryRSS(xml) {
+      const cutoff = Date.now() - 30*24*60*60*1000;
+      const candidates = [];
+      const re = /<item>([\s\S]*?)<\/item>/g;
+      let m;
+      while ((m = re.exec(xml)) !== null) {
+        const b     = m[1];
+        const title = m[1].match(/<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/)?.[1]?.replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").trim() || "";
+        const link  = m[1].match(/<link[^>]*>([\s\S]*?)<\/link>/)?.[1]?.trim() || m[1].match(/<guid[^>]*>([\s\S]*?)<\/guid>/)?.[1]?.trim() || "";
+        const pub   = m[1].match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/)?.[1]?.trim() || "";
+        const src   = m[1].match(/<source[^>]*>([\s\S]*?)<\/source>/)?.[1]?.replace(/<[^>]+>/g,"").trim() || "";
+        if (!title || !link) continue;
+        const date = pub ? new Date(pub) : null;
+        if (date && date.getTime() < cutoff) continue;
+        const tl = title.toLowerCase();
+        if (CONSUMER_NOISE.some(n => tl.includes(n.toLowerCase()))) continue;
+        const score = BUSINESS_SIGNALS.filter(s => tl.includes(s.toLowerCase())).length;
+        const ago = date ? (() => {
+          const diff = Date.now()-date.getTime(), h=Math.floor(diff/3600000), d=Math.floor(diff/86400000);
+          if(h<1) return "Just now"; if(h<24) return `${h}h ago`; if(d<7) return `${d}d ago`;
+          return date.toLocaleDateString("en-GB",{day:"numeric",month:"short"});
+        })() : "";
+        candidates.push({ title, link, source:src, ago, score, date:date?.toISOString()||null });
+      }
+      return candidates.sort((a,b)=>b.score-a.score||(new Date(b.date||0)-new Date(a.date||0))).slice(0,5);
+    }
+
+    (async () => {
+      for (const q of queries) {
+        try {
+          const r = await fetch(`/api/news?q=${encodeURIComponent(q)}`, { signal: AbortSignal.timeout(8000) });
+          if (!r.ok) continue;
+          const xml = await r.text();
+          const parsed = parseIndustryRSS(xml);
+          if (parsed.length > 0) { setItems(parsed); break; }
+        } catch { continue; }
+      }
+      setLoading(false);
+    })();
+  }, [market]);
+
+  const T = { forest:"#1C2B2B", textMid:"#4A5A5A", textMuted:"#8A9090", border:"#D5CEC6", mauveDark:"#7A5A5A" };
+
+  return (
+    <div style={{borderTop:`1px solid ${T.border}`,paddingTop:22}}>
+      <div style={{fontSize:9.5,letterSpacing:"0.32em",textTransform:"uppercase",color:T.textMuted,marginBottom:14,fontWeight:500}}>Industry Intelligence — Real News</div>
+      {loading ? (
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {[1,2,3].map(i=><div key={i} style={{height:13,borderRadius:3,background:"linear-gradient(90deg,#E3DDD4 25%,#D5CEC6 50%,#E3DDD4 75%)",backgroundSize:"600px 100%",animation:"shimmer 1.6s infinite linear",width:`${70-i*10}%`}}/>)}
+        </div>
+      ) : items.length > 0 ? (
+        items.map((n,i) => (
+          <a key={i} href={n.link} target="_blank" rel="noopener noreferrer"
+            style={{display:"flex",gap:20,alignItems:"baseline",marginBottom:11,textDecoration:"none"}}
+          >
+            <span style={{fontSize:10,color:T.textMuted,whiteSpace:"nowrap",width:58,fontWeight:300,flexShrink:0}}>{n.ago}</span>
+            <span style={{fontSize:13,color:T.textMid,lineHeight:1.6,fontWeight:300}}>
+              <strong style={{color:T.forest,fontWeight:500}}>{n.title}</strong>
+              {n.source && <span style={{color:T.textMuted,fontSize:11}}> · {n.source}</span>}
+            </span>
+          </a>
+        ))
+      ) : (
+        <p style={{fontSize:12,color:T.textMuted,fontWeight:300}}>No recent industry news found.</p>
+      )}
+    </div>
+  );
+}
 
 export default function Home() {
   const [market,     setMarket]     = useState("All");
@@ -362,10 +453,15 @@ export default function Home() {
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",flex:1}}>
           <div style={{fontSize:9,letterSpacing:"0.5em",color:T.mauveLight,textTransform:"uppercase",fontWeight:400}}>Nordic Beauty Intelligence</div>
         </div>
-        <div style={{display:"flex",alignItems:"center",padding:"14px 0"}}>
-          <div style={{textAlign:"right",lineHeight:1.15}}>
-            <div style={{fontSize:14,letterSpacing:"0.3em",textTransform:"uppercase",color:T.cream,fontWeight:600}}>M A T A S</div>
-            <div style={{fontSize:14,letterSpacing:"0.3em",textTransform:"uppercase",color:T.cream,fontWeight:600}}>G R O U P</div>
+       <div style={{display:"flex",alignItems:"center",padding:"14px 0"}}>
+          <div style={{
+            background:T.cream,
+            padding:"8px 14px",
+            lineHeight:1.15,
+            textAlign:"center",
+          }}>
+            <div style={{fontSize:13,letterSpacing:"0.35em",textTransform:"uppercase",color:T.forest,fontWeight:700,fontFamily:"'Plus Jakarta Sans',sans-serif"}}>M A T A S</div>
+            <div style={{fontSize:13,letterSpacing:"0.35em",textTransform:"uppercase",color:T.forest,fontWeight:700,fontFamily:"'Plus Jakarta Sans',sans-serif"}}>G R O U P</div>
           </div>
         </div>
       </div>
@@ -385,24 +481,61 @@ export default function Home() {
           ))}
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0"}}>
-          {["Denmark","Sweden","Norway","Finland"].map(m => (
+          {[
+            { market:"Denmark", bg:"#C60C30", content:"dk" },
+            { market:"Sweden",  bg:"#006AA7", content:"se" },
+            { market:"Norway",  bg:"#EF2B2D", content:"no" },
+            { market:"Finland", bg:"#003580", content:"fi" },
+          ].map(({market:m, bg, content}) => (
             <button
               key={m}
               onClick={()=>setMarket(market===m?"All":m)}
               title={m}
               style={{
-                width:36,height:36,borderRadius:"50%",border:"none",
-                cursor:"pointer",padding:0,background:"transparent",
-                fontSize:22,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",
-                outline:market===m?`3px solid ${T.forest}`:"3px solid transparent",
-                outlineOffset:2,
-                transform:market===m?"scale(1.1)":"scale(1)",
-                transition:"outline .15s,transform .15s",
+                width:38,height:38,borderRadius:"50%",border:"none",
+                cursor:"pointer",padding:0,
+                background:bg,
+                display:"flex",alignItems:"center",justifyContent:"center",
+                boxShadow:market===m?`0 0 0 3px ${T.forest},0 0 0 5px ${bg}`:"0 0 0 0px transparent",
+                transform:market===m?"scale(1.12)":"scale(1)",
+                transition:"box-shadow .15s,transform .15s",
+                overflow:"hidden",
+                position:"relative",
               }}
-              onMouseEnter={e=>e.currentTarget.style.transform="scale(1.15)"}
-              onMouseLeave={e=>e.currentTarget.style.transform=market===m?"scale(1.1)":"scale(1)"}
+              onMouseEnter={e=>{e.currentTarget.style.transform="scale(1.15)";}}
+              onMouseLeave={e=>{e.currentTarget.style.transform=market===m?"scale(1.12)":"scale(1)";}}
             >
-              {FLAGS[m]}
+              {/* Flag SVG inlined per country */}
+              {m==="Denmark" && (
+                <svg viewBox="0 0 37 28" width="38" height="38" xmlns="http://www.w3.org/2000/svg">
+                  <rect width="37" height="28" fill="#C60C30"/>
+                  <rect x="11" y="0" width="5" height="28" fill="white"/>
+                  <rect x="0" y="11.5" width="37" height="5" fill="white"/>
+                </svg>
+              )}
+              {m==="Sweden" && (
+                <svg viewBox="0 0 16 10" width="38" height="38" xmlns="http://www.w3.org/2000/svg">
+                  <rect width="16" height="10" fill="#006AA7"/>
+                  <rect x="5" y="0" width="2" height="10" fill="#FECC02"/>
+                  <rect x="0" y="4" width="16" height="2" fill="#FECC02"/>
+                </svg>
+              )}
+              {m==="Norway" && (
+                <svg viewBox="0 0 22 16" width="38" height="38" xmlns="http://www.w3.org/2000/svg">
+                  <rect width="22" height="16" fill="#EF2B2D"/>
+                  <rect x="6" y="0" width="4" height="16" fill="white"/>
+                  <rect x="0" y="6" width="22" height="4" fill="white"/>
+                  <rect x="7" y="0" width="2" height="16" fill="#002868"/>
+                  <rect x="0" y="7" width="22" height="2" fill="#002868"/>
+                </svg>
+              )}
+              {m==="Finland" && (
+                <svg viewBox="0 0 18 11" width="38" height="38" xmlns="http://www.w3.org/2000/svg">
+                  <rect width="18" height="11" fill="white"/>
+                  <rect x="5" y="0" width="3" height="11" fill="#003580"/>
+                  <rect x="0" y="4" width="18" height="3" fill="#003580"/>
+                </svg>
+              )}
             </button>
           ))}
         </div>
@@ -440,20 +573,7 @@ export default function Home() {
                   </div>
                 ))}
               </div>
-              {brief.industryNews?.length>0 && (
-                <div style={{borderTop:`1px solid ${T.border}`,paddingTop:22}}>
-                  <div style={{fontSize:9.5,letterSpacing:"0.32em",textTransform:"uppercase",color:T.textMuted,marginBottom:14,fontWeight:500}}>Industry Intelligence</div>
-                  {brief.industryNews.map((n,i) => (
-                    <div key={i} style={{display:"flex",gap:20,alignItems:"baseline",marginBottom:11}}>
-                      <span style={{fontSize:10,color:T.textMuted,whiteSpace:"nowrap",width:58,fontWeight:300}}>{n.time}</span>
-                      <span style={{fontSize:13,color:T.textMid,lineHeight:1.6,fontWeight:300}}>
-                        <strong style={{color:T.forest,fontWeight:500}}>{n.title}</strong>
-                        <span style={{color:T.textMuted}}> — {n.summary}</span>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
+             <IndustryNews market={market}/>
             </div>
           ) : <p style={{fontSize:13,color:T.textMuted}}>Could not load brief.</p>}
         </div>
