@@ -19,32 +19,6 @@ const COMPETITORS = [
   { name: "Emotion",          markets: ["Finland"],                  ticker: null },
 ];
 
-const SEARCH_QUERIES = {
-  "Matas":            ['"Matas" skønhed OR beauty OR butik OR webshop', '"Matas Group" investor OR retail OR results'],
-  "KICKS":            ['"KICKS Beauty" Scandinavia OR Sverige OR Norge', '"KICKS" parfymeri butik nyheter'],
-  "Normal":           ['"Normal" butikker Danmark skønhed rabat', '"Normal discount" Denmark stores beauty'],
-  "Lyko":             ['"Lyko" beauty hår hudvård Sverige', '"Lyko.com" OR "Lyko Group" nyheter'],
-  "Sephora":          ['"Sephora" beauty Denmark Nordic store', '"Sephora" LVMH beauty results'],
-  "Stockmann":        ['"Stockmann" kauneus kosmetiikka Helsinki', '"Stockmann" tavaratalo Finland beauty'],
-  "The Body Shop":    ['"The Body Shop" retail beauty store sustainability', '"Body Shop" new products campaign'],
-  "Åhléns":          ['"Åhléns" skönhet beauty varuhus Sverige nyheter', '"Åhléns" Stockholm kampanj'],
-  "Apotea":           ['"Apotea" apotek beauty Sverige hudvård', '"Apotea.se" nyheter erbjudanden'],
-  "Caia":             ['"Caia Cosmetics" Sverige makeup', '"Caia" beauty influencer Sverige'],
-  "Fredrik & Louisa": ['"Fredrik og Louisa" parfyme Norge nyheter', '"Fredrik & Louisa" beauty Norway'],
-  "Vita":             ['"Vita apotek" Norge helse beauty', '"Vita.no" helsekost nyheter'],
-  "Ruohonjuuri":      ['"Ruohonjuuri" kauneus luomu Helsinki', '"Ruohonjuuri" Finland beauty organic'],
-  "Sokos":            ['"Sokos" kosmetiikka kauneus Finland', '"Sokos" beauty department Finland kampanja'],
-  "Emotion":          ['"Emotion" parfymeri Finland kauneus', '"Emotion beauty" Finland kosmetiikka'],
-};
-
-const NOISE_FILTERS = {
-  "Normal":   ["new normal","back to normal","return to normal","perfectly normal","paranormal","subnormal","abnormal","feels normal"],
-  "Vita":     ["vita coco","vita liberata","dolce vita","acqua di vita","vita nuova","pro vita","bona vita"],
-  "Emotion":  ["emotional","emotions","emotionally","emotional support","emotional intelligence","emotional eating"],
-  "Caia":     ["caia archon","caia island","caia province"],
-  "Sokos":    ["sokos hotel","sokos hotels"],
-};
-
 const MARKETS = ["All","Denmark","Sweden","Norway","Finland"];
 const FLAGS   = { Denmark:"🇩🇰", Sweden:"🇸🇪", Norway:"🇳🇴", Finland:"🇫🇮" };
 
@@ -69,73 +43,23 @@ const T = {
   white:     "#FAFAF8",
 };
 
-// ── RSS parsing ───────────────────────────────────────────────────────
-function extract(xml, tag) {
-  const m =
-    xml.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`)) ||
-    xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`));
-  return m ? m[1].trim() : "";
-}
-
-function stripTags(s) {
-  return s.replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'").trim();
-}
-
 function timeAgo(date) {
-  const diff = Date.now() - date.getTime();
+  const diff = Date.now() - new Date(date).getTime();
   const h = Math.floor(diff / 3600000);
   const d = Math.floor(diff / 86400000);
   if (h < 1)  return "Just now";
   if (h < 24) return `${h}h ago`;
   if (d < 7)  return `${d}d ago`;
-  return date.toLocaleDateString("en-GB",{day:"numeric",month:"short"});
+  return new Date(date).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
 }
 
-function parseRSS(xml, company) {
-  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-  const noise  = NOISE_FILTERS[company] || [];
-  const items  = [];
-  const regex  = /<item>([\s\S]*?)<\/item>/g;
-  let m;
-  while ((m = regex.exec(xml)) !== null) {
-    const b     = m[1];
-    const title = stripTags(extract(b,"title"));
-    const link  = extract(b,"link") || extract(b,"guid");
-    const pub   = extract(b,"pubDate");
-    const src   = stripTags(extract(b,"source"));
-    if (!title || !link) continue;
-    const date  = pub ? new Date(pub) : null;
-    if (date && date.getTime() < cutoff) continue;
-    if (noise.some(n => title.toLowerCase().includes(n))) continue;
-    items.push({ title, link, source: src, ago: date ? timeAgo(date) : "" });
-    if (items.length >= 5) break;
-  }
-  return items;
+async function fetchNews(company) {
+  const res = await fetch(`/api/news?company=${encodeURIComponent(company)}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.items || [];
 }
 
-async function fetchNewsForCompany(company) {
-  const queries = SEARCH_QUERIES[company] || [`"${company}" beauty retail Nordic`];
-  // Fetch all queries in parallel, return first that has results
-  const attempts = await Promise.allSettled(
-    queries.map(async q => {
-      const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
-      // Use corsproxy.io for direct browser-side fetching
-      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(rssUrl)}`;
-      const r = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
-      if (!r.ok) throw new Error(`${r.status}`);
-      const xml   = await r.text();
-      const items = parseRSS(xml, company);
-      if (!items.length) throw new Error("empty");
-      return items;
-    })
-  );
-  for (const a of attempts) {
-    if (a.status === "fulfilled") return a.value;
-  }
-  return [];
-}
-
-// ── Claude proxy ──────────────────────────────────────────────────────
 async function callProxy(prompt, maxTokens = 500) {
   const res = await fetch("/api/claude", {
     method: "POST",
@@ -158,12 +82,10 @@ Return ONLY valid JSON:
 function briefPrompt(market) {
   const scope = market === "All" ? "Denmark, Sweden, Norway, and Finland" : market;
   return `Nordic beauty analyst. Today: ${TODAY()}.
-Market intelligence brief for beauty retail in ${scope}.
-Return ONLY valid JSON:
+Brief for beauty retail in ${scope}. Return ONLY valid JSON:
 {"summary":"2 sentences on Nordic beauty retail right now","trend":"Biggest trend in 5 words","industryNews":[{"title":"Headline","summary":"One sentence","time":"Xh ago"},{"title":"Headline","summary":"One sentence","time":"Xh ago"},{"title":"Headline","summary":"One sentence","time":"Xh ago"}]}`;
 }
 
-// ── UI components ─────────────────────────────────────────────────────
 function Shimmer({ w, h = 13, radius = 3, style = {} }) {
   return (
     <div style={{
@@ -205,7 +127,6 @@ function IndicatorBlock({ label, data, unit = "" }) {
   );
 }
 
-// ── Main ──────────────────────────────────────────────────────────────
 export default function Home() {
   const [market,     setMarket]     = useState("All");
   const [brief,      setBrief]      = useState(null);
@@ -219,8 +140,18 @@ export default function Home() {
   const today = TODAY();
 
   const visible = COMPETITORS.filter(c => market === "All" || c.markets.includes(market));
-  const loaded  = visible.filter(c => cards[c.name] && cards[c.name] !== "loading").length;
-  const pct     = visible.length ? (loaded / visible.length) * 100 : 0;
+
+  // Sort visible by most recent news date — companies with news come first
+  const sortedVisible = [...visible].sort((a, b) => {
+    const da = cards[a.name];
+    const db = cards[b.name];
+    const dateA = da?.items?.[0]?.date ? new Date(da.items[0].date) : new Date(0);
+    const dateB = db?.items?.[0]?.date ? new Date(db.items[0].date) : new Date(0);
+    return dateB - dateA;
+  });
+
+  const loaded = visible.filter(c => cards[c.name] && cards[c.name] !== "loading").length;
+  const pct    = visible.length ? (loaded / visible.length) * 100 : 0;
 
   useEffect(() => {
     fetch("/api/stocks").then(r => r.json()).then(setStocks).catch(() => {});
@@ -248,7 +179,7 @@ export default function Home() {
     toFetch.forEach((c, i) => {
       setTimeout(async () => {
         try {
-          const items = await fetchNewsForCompany(c.name);
+          const items = await fetchNews(c.name);
           let sentiment = "neutral", insight = "";
           try {
             const ai = await callProxy(insightPrompt(c, items), 150);
@@ -398,12 +329,12 @@ export default function Home() {
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 22 }}>
           <h2 style={{ fontSize: 10, letterSpacing: "0.35em", textTransform: "uppercase", color: T.textMuted, fontWeight: 500 }}>Competitor Intelligence</h2>
           <span style={{ color: T.border }}>—</span>
-          <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 300 }}>{visible.length} companies tracked</span>
+          <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 300 }}>{visible.length} companies · sorted by latest news</span>
         </div>
 
-        {/* Grid */}
+        {/* Grid — sorted by most recent news */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(380px,1fr))", gap: 2, background: T.border }}>
-          {visible.map(c => {
+          {sortedVisible.map(c => {
             const d         = cards[c.name];
             const isLoaded  = d && d !== "loading" && d !== "error";
             const isOpen    = expanded === c.name;
@@ -530,4 +461,14 @@ export default function Home() {
       </div>
     </>
   );
+}
+
+function timeAgo(date) {
+  const diff = Date.now() - new Date(date).getTime();
+  const h = Math.floor(diff / 3600000);
+  const d = Math.floor(diff / 86400000);
+  if (h < 1)  return "Just now";
+  if (h < 24) return `${h}h ago`;
+  if (d < 7)  return `${d}d ago`;
+  return new Date(date).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
 }
