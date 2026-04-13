@@ -8,30 +8,21 @@ export default async function handler(req, res) {
     Finland: { wb: "FIN", oecd: "FIN" },
   };
 
-  // World Bank indicator codes
-  const WB_CPI         = "FP.CPI.TOTL.ZG";  // CPI inflation, annual %
-  const WB_RETAIL      = "NE.CON.PRVT.KD.ZG"; // Household consumption growth %
-  const WB_UNEMPLOY    = "SL.UEM.TOTL.ZS";  // Unemployment %
-
   async function fetchWorldBank(countryCode, indicator) {
     try {
-      const url = `https://api.worldbank.org/v2/country/${countryCode}/indicator/${indicator}?format=json&mrv=2&per_page=2`;
+      const url = `https://api.worldbank.org/v2/country/${countryCode}/indicator/${indicator}?format=json&mrv=3&per_page=3`;
       const r = await fetch(url);
       if (!r.ok) throw new Error(`WB ${r.status}`);
       const json = await r.json();
-      const data = json?.[1];
+      const data = json?.[1]?.filter(d => d.value !== null);
       if (!data?.length) throw new Error("No data");
-
-      // Find latest non-null entry
-      const latest = data.find(d => d.value !== null);
-      const prev   = data.find(d => d.value !== null && d.date !== latest?.date);
-      if (!latest) throw new Error("No value");
-
+      const latest = data[0];
+      const prev   = data[1];
       const change = prev ? (latest.value - prev.value).toFixed(1) : null;
       return {
         value:     latest.value.toFixed(1),
         period:    latest.date,
-        change:    change ? (parseFloat(change) >= 0 ? `+${change}` : `${change}`) : null,
+        change:    change ? (parseFloat(change) >= 0 ? `+${change}` : change) : null,
         direction: change ? (parseFloat(change) > 0.05 ? "up" : parseFloat(change) < -0.05 ? "down" : "flat") : "flat",
         source:    "World Bank",
       };
@@ -40,27 +31,38 @@ export default async function handler(req, res) {
     }
   }
 
-  async function fetchOECDConsumerConfidence(oecdCode) {
+  // OECD Consumer Confidence — using the stable OECD.Stat REST API
+  async function fetchConsumerConfidence(oecdCode) {
     try {
-      // OECD new SDMX REST API — Consumer Confidence Index
-      const url = `https://sdmx.oecd.org/public/rest/data/OECD.SDD.STES,DSD_STES@DF_CLI,4.0/${oecdCode}.M.LI.AA.AA.IX?startPeriod=2024-01&dimensionAtObservation=TIME_PERIOD`;
+      // Try new OECD SDMX API first
+      const url = `https://sdmx.oecd.org/public/rest/data/OECD.SDD.STES,DSD_STES@DF_CLI,4.0/${oecdCode}.M.LI.AA.AA.IX?startPeriod=2024-06&dimensionAtObservation=TIME_PERIOD&format=jsondata`;
       const r = await fetch(url, {
-        headers: { "Accept": "application/vnd.sdmx.data+json;version=2" },
+        headers: {
+          "Accept": "application/vnd.sdmx.data+json;version=2.0.0",
+          "User-Agent": "Mozilla/5.0",
+        },
       });
-      if (!r.ok) throw new Error(`OECD CLI ${r.status}`);
+      if (!r.ok) throw new Error(`OECD ${r.status}`);
       const json = await r.json();
 
-      const obs = json?.data?.dataSets?.[0]?.observations;
-      const times = json?.data?.structures?.[0]?.dimensions?.observation?.[0]?.values;
+      // Navigate SDMX-JSON structure
+      const dataset = json?.data?.dataSets?.[0];
+      const structure = json?.data?.structures?.[0];
+      const timeDim = structure?.dimensions?.observation?.find(d => d.id === "TIME_PERIOD");
 
-      if (!obs || !times) throw new Error("No OECD data");
+      if (!dataset || !timeDim) throw new Error("Bad structure");
 
-      const entries = times
-        .map((t, i) => ({ period: t.id, value: obs[String(i)]?.[0] ?? null }))
+      const entries = timeDim.values
+        .map((t, i) => {
+          const key = `0:0:0:0:0:0:${i}`;
+          const altKey = Object.keys(dataset.observations || {}).find(k => k.endsWith(`:${i}`));
+          const val = dataset.observations?.[key]?.[0] ?? dataset.observations?.[altKey]?.[0] ?? null;
+          return { period: t.id, value: val };
+        })
         .filter(x => x.value !== null)
         .sort((a, b) => b.period.localeCompare(a.period));
 
-      if (!entries.length) throw new Error("Empty");
+      if (!entries.length) throw new Error("No entries");
 
       const latest = entries[0];
       const prev   = entries[1];
@@ -73,27 +75,50 @@ export default async function handler(req, res) {
         direction: change ? (parseFloat(change) > 0 ? "up" : parseFloat(change) < 0 ? "down" : "flat") : "flat",
         source:    "OECD",
       };
-    } catch (err) {
-      return { error: err.message };
+    } catch {
+      // Fallback: try alternate OECD endpoint format
+      try {
+        const url2 = `https://stats.oecd.org/sdmx-json/data/MEI_CLI/${oecdCode}.CSCICP03.IXOBSAM.M/all?startTime=2024-06&format=jsondata`;
+        const r2 = await fetch(url2, { headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0" } });
+        if (!r2.ok) throw new Error("fallback failed");
+        const json2 = await r2.json();
+        const obs   = json2?.dataSets?.[0]?.series?.["0:0:0:0"]?.observations;
+        const times = json2?.structure?.dimensions?.observation?.[0]?.values;
+        if (!obs || !times) throw new Error("no data");
+        const entries = times
+          .map((t, i) => ({ period: t.id, value: obs[String(i)]?.[0] ?? null }))
+          .filter(x => x.value !== null)
+          .sort((a, b) => b.period.localeCompare(a.period));
+        if (!entries.length) throw new Error("empty");
+        const latest = entries[0];
+        const prev   = entries[1];
+        const change = prev ? (latest.value - prev.value).toFixed(2) : null;
+        return {
+          value:     latest.value.toFixed(1),
+          period:    latest.period,
+          change:    change ? (parseFloat(change) >= 0 ? `+${change}` : change) : null,
+          direction: change ? (parseFloat(change) > 0 ? "up" : parseFloat(change) < 0 ? "down" : "flat") : "flat",
+          source:    "OECD",
+        };
+      } catch {
+        return { error: "Unavailable" };
+      }
     }
   }
 
   try {
     const results = {};
-
     await Promise.all(
       Object.entries(COUNTRIES).map(async ([country, codes]) => {
         const [cc, cpi, unemployment] = await Promise.all([
-          fetchOECDConsumerConfidence(codes.oecd),
-          fetchWorldBank(codes.wb, WB_CPI),
-          fetchWorldBank(codes.wb, WB_UNEMPLOY),
+          fetchConsumerConfidence(codes.oecd),
+          fetchWorldBank(codes.wb, "FP.CPI.TOTL.ZG"),
+          fetchWorldBank(codes.wb, "SL.UEM.TOTL.ZS"),
         ]);
         results[country] = { consumerConfidence: cc, cpi, unemployment };
       })
     );
-
-    // Cache for 24h — indicators don't change by the hour
-    res.setHeader("Cache-Control", "s-maxage=86400, stale-while-revalidate");
+    res.setHeader("Cache-Control", "s-maxage=43200, stale-while-revalidate");
     return res.status(200).json(results);
   } catch (err) {
     return res.status(500).json({ error: err.message });
