@@ -1,10 +1,7 @@
-// Simple CORS proxy - just passes Google News RSS through
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).end();
-  
   const { q } = req.query;
-  if (!q) return res.status(400).json({ error: "Missing q" });
-
+  if (!q) return res.status(400).end();
   try {
     const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
     const r = await fetch(rssUrl, {
@@ -14,7 +11,6 @@ export default async function handler(req, res) {
       },
     });
     const xml = await r.text();
-    res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Cache-Control", "s-maxage=3600, stale-while-revalidate");
     res.setHeader("Content-Type", "text/xml");
     return res.status(200).send(xml);
