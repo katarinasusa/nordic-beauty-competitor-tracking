@@ -7,7 +7,7 @@ const SEARCH_QUERIES = {
   "Stockmann":        "Stockmann Finland",
   "The Body Shop":    "The Body Shop beauty retail",
   "Åhléns":           "Åhléns Sweden",
-  "Apotea":           "Apotea Sweden",
+  "Apotea":           "Apotea Sweden pharmacy",
   "Caia":             "Caia Cosmetics Sweden",
   "Fredrik & Louisa": "Fredrik Louisa Norway beauty",
   "Vita":             "Vita apotek Norway",
@@ -16,23 +16,22 @@ const SEARCH_QUERIES = {
   "Emotion":          "Emotion beauty Finland",
 };
 
-// Fallback broader queries if first returns nothing
 const FALLBACK_QUERIES = {
-  "Matas":            "Matas Group",
-  "KICKS":            "KICKS parfymeri",
-  "Normal":           "Normal butik skønhed",
-  "Lyko":             "Lyko.com",
-  "Sephora":          "Sephora Nordic",
-  "Stockmann":        "Stockmann Helsinki",
-  "The Body Shop":    "Body Shop sustainability",
-  "Åhléns":           "Åhléns varuhus",
-  "Apotea":           "Apotea apotek",
-  "Caia":             "Caia makeup",
-  "Fredrik & Louisa": "Fredrik og Louisa",
-  "Vita":             "Vita helse Norway",
-  "Ruohonjuuri":      "Ruohonjuuri luomu",
-  "Sokos":            "Sokos kosmetiikka",
-  "Emotion":          "Emotion parfymeri",
+  "Matas":            "Matas Group retail",
+  "KICKS":            "KICKS parfymeri Sverige",
+  "Normal":           "Normal butik skønhed Danmark",
+  "Lyko":             "Lyko.com hår hudvård",
+  "Sephora":          "Sephora LVMH beauty",
+  "Stockmann":        "Stockmann Helsinki tavaratalo",
+  "The Body Shop":    "Body Shop cosmetics store",
+  "Åhléns":           "Åhléns varuhus Stockholm",
+  "Apotea":           "Apotea.se online apotek",
+  "Caia":             "Caia makeup influencer",
+  "Fredrik & Louisa": "Fredrik og Louisa parfyme",
+  "Vita":             "Vita helsekost apotek",
+  "Ruohonjuuri":      "Ruohonjuuri luomu Helsinki",
+  "Sokos":            "Sokos kosmetiikka Finland",
+  "Emotion":          "Emotion parfymeri kosmetiikka",
 };
 
 const NOISE_FILTERS = {
@@ -56,19 +55,51 @@ function timeAgo(dateStr) {
 }
 
 async function queryNewsData(apiKey, q) {
-  // Use /latest endpoint — correct for free tier
-  // language codes: en=English, da=Danish, sv=Swedish, no=Norwegian, fi=Finnish
-  const url = `https://newsdata.io/api/1/latest?apikey=${apiKey}&q=${encodeURIComponent(q)}&language=en,da,sv,no,fi&timeframe=720`;
-  const r = await fetch(url, { headers: { "Accept": "application/json" } });
-  if (!r.ok) {
-    const text = await r.text();
-    throw new Error(`NewsData ${r.status}: ${text.slice(0, 200)}`);
+  // No timeframe — free plan max is 48h and articles are 12h delayed anyway
+  // country codes: dk=Denmark, se=Sweden, no=Norway, fi=Finland
+  const url = `https://newsdata.io/api/1/latest?apikey=${apiKey}&q=${encodeURIComponent(q)}&language=en,da,sv,no,fi&country=dk,se,no,fi`;
+  
+  console.log(`Fetching: ${url.replace(apiKey, "HIDDEN")}`);
+  
+  const r = await fetch(url, {
+    headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0" },
+  });
+  
+  const text = await r.text();
+  console.log(`Response status: ${r.status}, body preview: ${text.slice(0, 300)}`);
+  
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${text.slice(0, 200)}`);
+  
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`Invalid JSON: ${text.slice(0, 200)}`);
   }
-  const data = await r.json();
+  
   if (data.status !== "success") {
-    throw new Error(`NewsData error: ${JSON.stringify(data).slice(0, 200)}`);
+    throw new Error(`API error: ${JSON.stringify(data).slice(0, 300)}`);
   }
+  
   return data.results || [];
+}
+
+function filterAndMap(results, noise) {
+  return results
+    .filter(a => {
+      if (!a.title || !a.link) return false;
+      const t = a.title.toLowerCase();
+      return !noise.some(n => t.includes(n));
+    })
+    .map(a => ({
+      title:  a.title,
+      link:   a.link,
+      source: a.source_name || a.source_id || "",
+      date:   a.pubDate || null,
+      ago:    timeAgo(a.pubDate),
+    }))
+    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+    .slice(0, 5);
 }
 
 export default async function handler(req, res) {
@@ -79,47 +110,30 @@ export default async function handler(req, res) {
 
   const apiKey = process.env.NEWSDATA_API_KEY;
   if (!apiKey) {
-    console.error("NEWSDATA_API_KEY not set");
-    return res.status(200).json({ company, items: [], error: "No API key" });
+    console.error("NEWSDATA_API_KEY not set in environment variables");
+    return res.status(200).json({ company, items: [] });
   }
 
   const noise = NOISE_FILTERS[company] || [];
 
-  function filterAndMap(results) {
-    return results
-      .filter(a => {
-        if (!a.title || !a.link) return false;
-        const t = a.title.toLowerCase();
-        return !noise.some(n => t.includes(n));
-      })
-      .map(a => ({
-        title:  a.title,
-        link:   a.link,
-        source: a.source_name || a.source_id || "",
-        date:   a.pubDate || null,
-        ago:    timeAgo(a.pubDate),
-      }))
-      .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
-      .slice(0, 5);
-  }
-
   try {
-    // Try primary query first
-    let results = await queryNewsData(apiKey, SEARCH_QUERIES[company]);
-    let items = filterAndMap(results);
+    // Primary query
+    let results = await queryNewsData(apiKey, SEARCH_QUERIES[company] || company);
+    let items = filterAndMap(results, noise);
 
-    // If nothing found, try fallback query
+    // Fallback if empty
     if (items.length === 0 && FALLBACK_QUERIES[company]) {
-      console.log(`No results for ${company}, trying fallback`);
+      console.log(`${company}: primary empty, trying fallback`);
       results = await queryNewsData(apiKey, FALLBACK_QUERIES[company]);
-      items = filterAndMap(results);
+      items = filterAndMap(results, noise);
     }
 
-    console.log(`${company}: found ${items.length} articles`);
+    console.log(`${company}: returning ${items.length} items`);
     res.setHeader("Cache-Control", "s-maxage=3600, stale-while-revalidate");
     return res.status(200).json({ company, items });
+
   } catch (err) {
-    console.error(`News error for ${company}:`, err.message);
-    return res.status(200).json({ company, items: [], error: err.message });
+    console.error(`${company} news error:`, err.message);
+    return res.status(200).json({ company, items: [] });
   }
 }
