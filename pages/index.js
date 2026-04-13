@@ -273,7 +273,7 @@ export default function Home() {
 
       <style>{`
         * { box-sizing: border-box; }
-        body { font-family: 'Nunito Sans', 'Helvetica Neue', sans-serif !important; }
+        body { font-family: 'Nunito Sans', 'Aptos', sans-serif !important; }
         .fade { animation: fadeUp .3s ease forwards; }
         .card { transition: box-shadow .2s, border-color .2s; display: grid; grid-template-rows: 1fr auto auto; }
         .card:hover { box-shadow: 0 2px 20px rgba(28,43,43,.07); border-color: #7A5A5A !important; }
