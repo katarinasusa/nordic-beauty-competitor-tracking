@@ -462,13 +462,3 @@ export default function Home() {
     </>
   );
 }
-
-function timeAgo(date) {
-  const diff = Date.now() - new Date(date).getTime();
-  const h = Math.floor(diff / 3600000);
-  const d = Math.floor(diff / 86400000);
-  if (h < 1)  return "Just now";
-  if (h < 24) return `${h}h ago`;
-  if (d < 7)  return `${d}d ago`;
-  return new Date(date).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
-}
