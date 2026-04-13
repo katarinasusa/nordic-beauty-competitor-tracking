@@ -20,28 +20,28 @@ const COMPETITORS = [
 ];
 
 const SEARCH_QUERIES = {
-  "Matas":            ['"Matas" skønhed OR beauty OR butik', '"Matas Group" retail'],
-  "KICKS":            ['"KICKS Beauty" OR "KICKS butik" Scandinavia', '"KICKS" parfymeri Sweden Norway'],
-  "Normal":           ['"Normal" discount butik Denmark skønhed', '"Normal stores" beauty retail Denmark'],
-  "Lyko":             ['"Lyko" beauty OR hår OR hudvård Sweden', '"Lyko.com" skönhet'],
-  "Sephora":          ['"Sephora" Denmark OR Nordic beauty', '"Sephora" LVMH beauty retail'],
-  "Stockmann":        ['"Stockmann" Finland kauneus OR beauty OR kosmetiikka', '"Stockmann" department store Helsinki'],
-  "The Body Shop":    ['"The Body Shop" beauty OR retail OR store', '"Body Shop" sustainability beauty'],
-  "Åhléns":          ['"Åhléns" skönhet OR beauty OR varuhus Sweden', '"Åhléns City" Stockholm'],
-  "Apotea":           ['"Apotea" apotek OR beauty OR hudvård Sweden', '"Apotea.se" online'],
-  "Caia":             ['"Caia Cosmetics" OR "Caia beauty" Sweden', '"Caia" makeup Sverige'],
-  "Fredrik & Louisa": ['"Fredrik og Louisa" OR "Fredrik & Louisa" Norge', '"Fredrik Louisa" parfyme Norway'],
-  "Vita":             ['"Vita" apotek OR helsekost Norway helse', '"Vita.no" OR "Vita apotek"'],
-  "Ruohonjuuri":      ['"Ruohonjuuri" luomu OR kauneus Finland', '"Ruohonjuuri" beauty Helsinki'],
-  "Sokos":            ['"Sokos" kosmetiikka OR kauneus Finland tavaratalo', '"S-ryhmä" Sokos beauty Finland'],
-  "Emotion":          ['"Emotion" parfymeri OR kauneus Finland', '"Emotion" beauty store Finland kosmetiikka'],
+  "Matas":            ['"Matas" skønhed OR beauty OR butik OR webshop', '"Matas Group" investor OR retail OR results'],
+  "KICKS":            ['"KICKS Beauty" Scandinavia OR Sverige OR Norge', '"KICKS" parfymeri butik nyheter'],
+  "Normal":           ['"Normal" butikker Danmark skønhed rabat', '"Normal discount" Denmark stores beauty'],
+  "Lyko":             ['"Lyko" beauty hår hudvård Sverige', '"Lyko.com" OR "Lyko Group" nyheter'],
+  "Sephora":          ['"Sephora" beauty Denmark Nordic store', '"Sephora" LVMH beauty results'],
+  "Stockmann":        ['"Stockmann" kauneus kosmetiikka Helsinki', '"Stockmann" tavaratalo Finland beauty'],
+  "The Body Shop":    ['"The Body Shop" retail beauty store sustainability', '"Body Shop" new products campaign'],
+  "Åhléns":          ['"Åhléns" skönhet beauty varuhus Sverige nyheter', '"Åhléns" Stockholm kampanj'],
+  "Apotea":           ['"Apotea" apotek beauty Sverige hudvård', '"Apotea.se" nyheter erbjudanden'],
+  "Caia":             ['"Caia Cosmetics" Sverige makeup', '"Caia" beauty influencer Sverige'],
+  "Fredrik & Louisa": ['"Fredrik og Louisa" parfyme Norge nyheter', '"Fredrik & Louisa" beauty Norway'],
+  "Vita":             ['"Vita apotek" Norge helse beauty', '"Vita.no" helsekost nyheter'],
+  "Ruohonjuuri":      ['"Ruohonjuuri" kauneus luomu Helsinki', '"Ruohonjuuri" Finland beauty organic'],
+  "Sokos":            ['"Sokos" kosmetiikka kauneus Finland', '"Sokos" beauty department Finland kampanja'],
+  "Emotion":          ['"Emotion" parfymeri Finland kauneus', '"Emotion beauty" Finland kosmetiikka'],
 };
 
 const NOISE_FILTERS = {
-  "Normal":   ["new normal","back to normal","return to normal","perfectly normal","paranormal","subnormal","abnormal"],
-  "Vita":     ["vita coco","vita liberata","dolce vita","acqua di vita","vita nuova","pro vita"],
-  "Emotion":  ["emotional","emotions","emotionally","emotional support","emotional intelligence"],
-  "Caia":     ["caia archon","caia island"],
+  "Normal":   ["new normal","back to normal","return to normal","perfectly normal","paranormal","subnormal","abnormal","feels normal"],
+  "Vita":     ["vita coco","vita liberata","dolce vita","acqua di vita","vita nuova","pro vita","bona vita"],
+  "Emotion":  ["emotional","emotions","emotionally","emotional support","emotional intelligence","emotional eating"],
+  "Caia":     ["caia archon","caia island","caia province"],
   "Sokos":    ["sokos hotel","sokos hotels"],
 };
 
@@ -69,7 +69,7 @@ const T = {
   white:     "#FAFAF8",
 };
 
-// ── RSS helpers ───────────────────────────────────────────────────────
+// ── RSS parsing ───────────────────────────────────────────────────────
 function extract(xml, tag) {
   const m =
     xml.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`)) ||
@@ -88,49 +88,55 @@ function timeAgo(date) {
   if (h < 1)  return "Just now";
   if (h < 24) return `${h}h ago`;
   if (d < 7)  return `${d}d ago`;
-  return date.toLocaleDateString("en-GB", { day:"numeric", month:"short" });
+  return date.toLocaleDateString("en-GB",{day:"numeric",month:"short"});
 }
 
 function parseRSS(xml, company) {
-  const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-  const noise  = (NOISE_FILTERS[company] || []);
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const noise  = NOISE_FILTERS[company] || [];
   const items  = [];
   const regex  = /<item>([\s\S]*?)<\/item>/g;
-  let match;
-  while ((match = regex.exec(xml)) !== null) {
-    const block   = match[1];
-    const title   = stripTags(extract(block, "title"));
-    const link    = extract(block, "link") || extract(block, "guid");
-    const pubDate = extract(block, "pubDate");
-    const source  = stripTags(extract(block, "source"));
+  let m;
+  while ((m = regex.exec(xml)) !== null) {
+    const b     = m[1];
+    const title = stripTags(extract(b,"title"));
+    const link  = extract(b,"link") || extract(b,"guid");
+    const pub   = extract(b,"pubDate");
+    const src   = stripTags(extract(b,"source"));
     if (!title || !link) continue;
-    const date = pubDate ? new Date(pubDate) : null;
-    if (date && date.getTime() < thirtyDaysAgo) continue;
+    const date  = pub ? new Date(pub) : null;
+    if (date && date.getTime() < cutoff) continue;
     if (noise.some(n => title.toLowerCase().includes(n))) continue;
-    items.push({ title, link, source, ago: date ? timeAgo(date) : "" });
+    items.push({ title, link, source: src, ago: date ? timeAgo(date) : "" });
     if (items.length >= 5) break;
   }
   return items;
 }
 
-async function fetchNewsWithFallback(company) {
+async function fetchNewsForCompany(company) {
   const queries = SEARCH_QUERIES[company] || [`"${company}" beauty retail Nordic`];
-  for (const q of queries) {
-    try {
-      const rssUrl   = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
-      const proxyUrl = `/api/news?url=${encodeURIComponent(rssUrl)}`;
-      const r = await fetch(proxyUrl);
-      if (!r.ok) continue;
+  // Fetch all queries in parallel, return first that has results
+  const attempts = await Promise.allSettled(
+    queries.map(async q => {
+      const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
+      // Use corsproxy.io for direct browser-side fetching
+      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(rssUrl)}`;
+      const r = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
+      if (!r.ok) throw new Error(`${r.status}`);
       const xml   = await r.text();
       const items = parseRSS(xml, company);
-      if (items.length > 0) return items;
-    } catch (_) {}
+      if (!items.length) throw new Error("empty");
+      return items;
+    })
+  );
+  for (const a of attempts) {
+    if (a.status === "fulfilled") return a.value;
   }
   return [];
 }
 
-// ── API helpers ───────────────────────────────────────────────────────
-async function callProxy(prompt, maxTokens = 600) {
+// ── Claude proxy ──────────────────────────────────────────────────────
+async function callProxy(prompt, maxTokens = 500) {
   const res = await fetch("/api/claude", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -146,22 +152,23 @@ function insightPrompt(c, items) {
 Recent headlines about "${c.name}" (${c.markets.join(", ")}):
 ${hl || "No recent news."}
 Return ONLY valid JSON:
-{"sentiment":"positive|neutral|negative","insight":"Strategic implication for Matas Group, max 20 words"}`;
+{"sentiment":"positive|neutral|negative","insight":"One strategic implication for Matas Group, max 20 words"}`;
 }
 
 function briefPrompt(market) {
   const scope = market === "All" ? "Denmark, Sweden, Norway, and Finland" : market;
   return `Nordic beauty analyst. Today: ${TODAY()}.
-Brief for beauty retail in ${scope}. Return ONLY valid JSON:
-{"summary":"2 sentences on Nordic beauty retail now","trend":"Biggest trend in 5 words","industryNews":[{"title":"Headline","summary":"One sentence","time":"Xh ago"},{"title":"Headline","summary":"One sentence","time":"Xh ago"},{"title":"Headline","summary":"One sentence","time":"Xh ago"}]}`;
+Market intelligence brief for beauty retail in ${scope}.
+Return ONLY valid JSON:
+{"summary":"2 sentences on Nordic beauty retail right now","trend":"Biggest trend in 5 words","industryNews":[{"title":"Headline","summary":"One sentence","time":"Xh ago"},{"title":"Headline","summary":"One sentence","time":"Xh ago"},{"title":"Headline","summary":"One sentence","time":"Xh ago"}]}`;
 }
 
-// ── Components ────────────────────────────────────────────────────────
+// ── UI components ─────────────────────────────────────────────────────
 function Shimmer({ w, h = 13, radius = 3, style = {} }) {
   return (
     <div style={{
       width: w, height: h, borderRadius: radius,
-      background: `linear-gradient(90deg, #E3DDD4 25%, #D5CEC6 50%, #E3DDD4 75%)`,
+      background: "linear-gradient(90deg,#E3DDD4 25%,#D5CEC6 50%,#E3DDD4 75%)",
       backgroundSize: "600px 100%",
       animation: "shimmer 1.6s infinite linear",
       ...style,
@@ -186,9 +193,7 @@ function IndicatorBlock({ label, data, unit = "" }) {
     <div style={{ background: T.white, padding: "16px 18px" }}>
       <div style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: T.textMuted, marginBottom: 8 }}>{label}</div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
-        <span style={{ fontSize: 22, fontWeight: 300, color: T.forest, letterSpacing: "-0.02em" }}>
-          {data.value}{unit}
-        </span>
+        <span style={{ fontSize: 22, fontWeight: 300, color: T.forest, letterSpacing: "-0.02em" }}>{data.value}{unit}</span>
         {data.change && (
           <span style={{ fontSize: 11, fontWeight: 500, color: data.direction === "up" ? "#2D6A4F" : data.direction === "down" ? "#7A3A3A" : T.textMuted }}>
             {data.direction === "up" ? "↑" : data.direction === "down" ? "↓" : "→"} {data.change}
@@ -243,7 +248,7 @@ export default function Home() {
     toFetch.forEach((c, i) => {
       setTimeout(async () => {
         try {
-          const items = await fetchNewsWithFallback(c.name);
+          const items = await fetchNewsForCompany(c.name);
           let sentiment = "neutral", insight = "";
           try {
             const ai = await callProxy(insightPrompt(c, items), 150);
@@ -286,11 +291,7 @@ export default function Home() {
       `}</style>
 
       {/* Header */}
-      <div style={{
-        background: T.forest, color: T.cream, padding: "0 40px",
-        display: "flex", alignItems: "stretch", justifyContent: "space-between",
-        position: "sticky", top: 0, zIndex: 50,
-      }}>
+      <div style={{ background: T.forest, color: T.cream, padding: "0 40px", display: "flex", alignItems: "stretch", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 50 }}>
         <div style={{ display: "flex", alignItems: "center", padding: "18px 0" }}>
           <div>
             <div style={{ fontSize: 9, letterSpacing: "0.5em", color: T.mauveLight, textTransform: "uppercase", marginBottom: 5, fontWeight: 400 }}>MATAS GROUP</div>
@@ -329,7 +330,7 @@ export default function Home() {
         <div style={{ marginBottom: 36 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 22 }}>
             <h2 style={{ fontSize: 10, letterSpacing: "0.35em", textTransform: "uppercase", color: T.textMuted, fontWeight: 500 }}>48h Market Brief</h2>
-            <span style={{ color: T.border, fontSize: 12 }}>—</span>
+            <span style={{ color: T.border }}>—</span>
             <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 300 }}>
               {market === "All" ? "All Nordic Markets" : `${FLAGS[market]} ${market}`}
             </span>
@@ -396,7 +397,7 @@ export default function Home() {
 
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 22 }}>
           <h2 style={{ fontSize: 10, letterSpacing: "0.35em", textTransform: "uppercase", color: T.textMuted, fontWeight: 500 }}>Competitor Intelligence</h2>
-          <span style={{ color: T.border, fontSize: 12 }}>—</span>
+          <span style={{ color: T.border }}>—</span>
           <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 300 }}>{visible.length} companies tracked</span>
         </div>
 
@@ -434,7 +435,7 @@ export default function Home() {
                           </div>
                         ) : stock.error ? null : (
                           <div className="fade">
-                            <div style={{ fontSize: 17, fontWeight: 300, color: T.forest, letterSpacing: "-0.01em" }}>{stock.price}</div>
+                            <div style={{ fontSize: 17, fontWeight: 300, color: T.forest }}>{stock.price}</div>
                             <div style={{ fontSize: 10, color: T.textMuted, fontWeight: 300 }}>{stock.currency}</div>
                             {stock.change && (
                               <div style={{ fontSize: 11, fontWeight: 500, color: stock.change.startsWith("+") ? "#2D6A4F" : "#7A3A3A" }}>{stock.change}</div>
@@ -486,7 +487,7 @@ export default function Home() {
                       color: T.textMuted, fontSize: 9.5, letterSpacing: "0.18em", textTransform: "uppercase", fontWeight: 500,
                     }}>
                       <span>{isOpen ? "Hide detail" : "Show detail"}</span>
-                      <span style={{ fontSize: 16, fontWeight: 300, lineHeight: 1 }}>{isOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 16, fontWeight: 300 }}>{isOpen ? "−" : "+"}</span>
                     </button>
                   )}
                 </div>
