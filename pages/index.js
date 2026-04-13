@@ -19,32 +19,115 @@ const COMPETITORS = [
   { name: "Emotion",          markets: ["Finland"],                  ticker: null },
 ];
 
-// Multiple queries per company - tries each until one returns results
+// Business-focused queries: financial results, strategy, expansion, leadership
 const QUERIES = {
-  "Matas":            ["Matas skønhed", "Matas butik", "Matas Group beauty"],
-  "KICKS":            ["KICKS beauty Sverige", "KICKS parfymeri", "KICKS Scandinavia"],
-  "Normal":           ['"Normal" butik skønhed Danmark', '"Normal stores" beauty Denmark'],
-  "Lyko":             ["Lyko beauty", "Lyko hudvård Sverige", "Lyko.com"],
-  "Sephora":          ["Sephora beauty", "Sephora store Denmark", "Sephora Nordic"],
-  "Stockmann":        ["Stockmann Finland", "Stockmann kauneus", "Stockmann Helsinki"],
-  "The Body Shop":    ["The Body Shop beauty", "Body Shop retail", "Body Shop sustainability"],
-  "Åhléns":           ["Åhléns Sverige", "Åhléns varuhus", "Åhléns beauty Stockholm"],
-  "Apotea":           ["Apotea apotek", "Apotea Sverige", "Apotea beauty"],
-  "Caia":             ["Caia Cosmetics", "Caia beauty Sverige", "Caia makeup"],
-  "Fredrik & Louisa": ["Fredrik og Louisa", "Fredrik Louisa Norway beauty"],
-  "Vita":             ['"Vita apotek" Norway', "Vita helsekost Norge", "Vita.no"],
-  "Ruohonjuuri":      ["Ruohonjuuri Finland", "Ruohonjuuri kauneus", "Ruohonjuuri luomu"],
-  "Sokos":            ["Sokos Finland kauneus", "Sokos tavaratalo beauty", "Sokos kosmetiikka"],
-  "Emotion":          ["Emotion parfymeri Finland", "Emotion beauty Finland", "Emotion kosmetiikka"],
+  "Matas": [
+    "Matas results revenue strategy expansion",
+    "Matas aktie investor regnskab",
+    "Matas Group financial",
+  ],
+  "KICKS": [
+    "KICKS beauty retailer expansion strategy results",
+    "KICKS parfymeri öppnar stänger strategi",
+    "KICKS beauty chain Scandinavia",
+  ],
+  "Normal": [
+    "Normal discount retailer expansion stores strategy",
+    "Normal butikker vækst strategi Danmark",
+    "Normal retail chain results",
+  ],
+  "Lyko": [
+    "Lyko beauty results revenue growth strategy",
+    "Lyko Group finansiell rapport tillväxt",
+    "Lyko online beauty retailer expansion",
+  ],
+  "Sephora": [
+    "Sephora results expansion strategy Europe",
+    "Sephora LVMH beauty retail strategy",
+    "Sephora store opening closing Europe",
+  ],
+  "Stockmann": [
+    "Stockmann results revenue strategy Finland",
+    "Stockmann tulos liikevaihto strategia",
+    "Stockmann department store financial",
+  ],
+  "The Body Shop": [
+    "The Body Shop restructuring strategy results expansion",
+    "The Body Shop store closure opening financial",
+    "The Body Shop retail chain business",
+  ],
+  "Åhléns": [
+    "Åhléns resultat strategi expansion Sverige",
+    "Åhléns varuhus stänger öppnar",
+    "Åhléns retail strategy Sweden",
+  ],
+  "Apotea": [
+    "Apotea results revenue growth strategy",
+    "Apotea tillväxt omsättning strategi",
+    "Apotea online pharmacy expansion",
+  ],
+  "Caia": [
+    "Caia Cosmetics results growth expansion strategy",
+    "Caia Cosmetics omsättning tillväxt",
+    "Caia beauty brand business",
+  ],
+  "Fredrik & Louisa": [
+    "Fredrik og Louisa åpner stenger strategi Norge",
+    "Fredrik Louisa parfyme butikk expansion",
+    "Fredrik Louisa beauty retail Norway",
+  ],
+  "Vita": [
+    "Vita apotek strategi ekspansjon resultater",
+    "Vita helsekost apotek vekst Norge",
+    "Vita pharmacy chain Norway strategy",
+  ],
+  "Ruohonjuuri": [
+    "Ruohonjuuri tulos strategia laajennus Finland",
+    "Ruohonjuuri kauppa avaa sulkee",
+    "Ruohonjuuri organic beauty retail Finland",
+  ],
+  "Sokos": [
+    "Sokos tulos strategia Finland tavaratalo",
+    "Sokos S-ryhmä kauneus laajennus",
+    "Sokos department store Finland strategy",
+  ],
+  "Emotion": [
+    "Emotion parfymeri Finland strategi tulokset",
+    "Emotion beauty store Finland expansion",
+    "Emotion kosmetiikka ketju Finland",
+  ],
 };
 
-const NOISE = {
+// Words that indicate consumer/lifestyle content not suitable for exec briefing
+const CONSUMER_NOISE = [
+  "£","$","€","deal","save","discount","cheap","affordable","best buy",
+  "how to","tutorial","review","top 10","ranked","editor-tested","editor's pick",
+  "gift guide","gift ideas","splurge","bargain","sale","% off","voucher","coupon",
+  "recipe","workout","fitness","diet","weight loss","skin care routine","hair routine",
+  "celebrity","influencer","tiktok","instagram","viral","trending products",
+  "for £","for $","for €","from £","from $","per cent off",
+  "diarist","exhibition","museum","art show","concert","festival",
+  "appointments","booking","slots available",
+];
+
+const COMPANY_NOISE = {
   "Normal":   ["new normal","back to normal","paranormal","abnormal","return to normal"],
-  "Vita":     ["vita coco","dolce vita","vita liberata"],
-  "Emotion":  ["emotional","emotions","emotionally"],
+  "Vita":     ["vita coco","dolce vita","vita liberata","vita nuova"],
+  "Emotion":  ["emotional","emotions","emotionally","emotional intelligence"],
   "Caia":     ["caia archon","caia island"],
   "Sokos":    ["sokos hotel"],
 };
+
+// Words that signal business relevance — article gets a relevance boost
+const BUSINESS_SIGNALS = [
+  "revenue","results","profit","loss","growth","expansion","opens","closes","strategy",
+  "acquisition","merger","invest","restructur","appoints","CEO","CFO","leadership",
+  "market share","launch","partnership","agreement","report","quarter","annual",
+  "omsättning","resultat","tillväxt","öppnar","stänger","förvärv","strategi",
+  "omsætning","regnskab","vækst","åbner","lukker","strategi","ledelse",
+  "liikevaihto","tulos","kasvu","avaa","sulkee","strategia","johto",
+  "omsetning","vekst","åpner","stenger","strategi","ledelse",
+];
 
 const MARKETS = ["All","Denmark","Sweden","Norway","Finland"];
 const FLAGS   = { Denmark:"🇩🇰", Sweden:"🇸🇪", Norway:"🇳🇴", Finland:"🇫🇮" };
@@ -60,7 +143,6 @@ const T = {
   border:"#D5CEC6", textMid:"#4A5A5A", textMuted:"#8A9090", white:"#FAFAF8",
 };
 
-// ── RSS parsing ───────────────────────────────────────────────────────
 function extractTag(xml, tag) {
   const m = xml.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`))
            || xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`));
@@ -79,12 +161,22 @@ function timeAgo(dateStr) {
   if (d < 7)  return `${d}d ago`;
   return new Date(dateStr).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
 }
+
+function isBusinessRelevant(title) {
+  const t = title.toLowerCase();
+  // Reject if consumer noise found
+  if (CONSUMER_NOISE.some(n => t.includes(n.toLowerCase()))) return false;
+  return true;
+}
+
 function parseRSS(xml, company) {
   const cutoff = Date.now() - 30*24*60*60*1000;
-  const noise  = NOISE[company] || [];
-  const items  = [];
-  const re     = /<item>([\s\S]*?)<\/item>/g;
+  const companyNoise = COMPANY_NOISE[company] || [];
+  const items = [];
+  const re    = /<item>([\s\S]*?)<\/item>/g;
   let m;
+
+  const candidates = [];
   while ((m = re.exec(xml)) !== null) {
     const b     = m[1];
     const title = stripHtml(extractTag(b,"title"));
@@ -94,15 +186,25 @@ function parseRSS(xml, company) {
     if (!title || !link) continue;
     const date  = pub ? new Date(pub) : null;
     if (date && date.getTime() < cutoff) continue;
-    if (noise.some(n => title.toLowerCase().includes(n))) continue;
-    items.push({ title, link, source:src, date:date?.toISOString()||null, ago:date?timeAgo(date):"" });
-    if (items.length >= 5) break;
+    const tl = title.toLowerCase();
+    if (companyNoise.some(n => tl.includes(n))) continue;
+    if (!isBusinessRelevant(title)) continue;
+    // Score by business signals
+    const score = BUSINESS_SIGNALS.filter(s => tl.includes(s.toLowerCase())).length;
+    candidates.push({ title, link, source:src, date:date?.toISOString()||null, ago:date?timeAgo(date):"", score });
   }
-  return items;
+
+  // Sort: business-relevant first (by score desc), then by date
+  candidates.sort((a,b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return new Date(b.date||0) - new Date(a.date||0);
+  });
+
+  return candidates.slice(0,5);
 }
 
 async function fetchCompanyNews(company) {
-  const queries = QUERIES[company] || [company];
+  const queries = QUERIES[company] || [company + " retail strategy results"];
   for (const q of queries) {
     try {
       const res = await fetch(`/api/news?q=${encodeURIComponent(q)}`, {
@@ -117,7 +219,6 @@ async function fetchCompanyNews(company) {
   return [];
 }
 
-// ── Claude ────────────────────────────────────────────────────────────
 async function callClaude(prompt, maxTokens=300) {
   const res = await fetch("/api/claude", {
     method:"POST", headers:{"Content-Type":"application/json"},
@@ -128,20 +229,20 @@ async function callClaude(prompt, maxTokens=300) {
 }
 function insightPrompt(c, items) {
   const hl = items.map(n=>`- ${n.title}`).join("\n");
-  return `Nordic beauty retail strategist at Matas Group. Today: ${TODAY()}.
-Recent headlines about "${c.name}" (${c.markets.join(", ")}):
-${hl||"No recent news."}
+  return `You are a senior strategy advisor to Matas Group executive team. Today: ${TODAY()}.
+Recent business news about "${c.name}" (active in ${c.markets.join(", ")}):
+${hl||"No recent news found."}
 Return ONLY valid JSON:
-{"sentiment":"positive|neutral|negative","insight":"One strategic implication for Matas Group, max 20 words"}`;
+{"sentiment":"positive|neutral|negative","insight":"One sharp competitive implication for Matas Group C-suite, max 20 words. Focus on threat or opportunity."}`;
 }
 function briefPrompt(market) {
   const scope = market==="All" ? "Denmark, Sweden, Norway, and Finland" : market;
-  return `Nordic beauty analyst. Today: ${TODAY()}.
-Brief for beauty retail in ${scope}. Return ONLY valid JSON:
-{"summary":"2 sentences on Nordic beauty retail right now","trend":"Biggest trend in 5 words","industryNews":[{"title":"Headline","summary":"One sentence","time":"Xh ago"},{"title":"Headline","summary":"One sentence","time":"Xh ago"},{"title":"Headline","summary":"One sentence","time":"Xh ago"}]}`;
+  return `Senior Nordic retail analyst briefing Matas Group executive team. Today: ${TODAY()}.
+Write an executive market intelligence brief for beauty & wellbeing retail in ${scope}.
+Return ONLY valid JSON:
+{"summary":"2 sentences: key strategic developments in Nordic beauty retail right now, suitable for C-suite","trend":"The single biggest strategic trend in 5 words","industryNews":[{"title":"Business headline","summary":"One sentence business implication","time":"Xh ago"},{"title":"Business headline","summary":"One sentence business implication","time":"Xh ago"},{"title":"Business headline","summary":"One sentence business implication","time":"Xh ago"}]}`;
 }
 
-// ── UI ────────────────────────────────────────────────────────────────
 function Shimmer({ w, h=13, radius=3, style={} }) {
   return <div style={{ width:w, height:h, borderRadius:radius,
     background:"linear-gradient(90deg,#E3DDD4 25%,#D5CEC6 50%,#E3DDD4 75%)",
@@ -156,7 +257,7 @@ function IndicatorBlock({ label, data, unit="" }) {
     <div style={base}>
       {lbl}
       <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:4}}>
-        <span style={{fontSize:22,fontWeight:300,color:T.forest,letterSpacing:"-0.02em"}}>{data.value}{unit}</span>
+        <span style={{fontSize:22,fontWeight:300,color:T.forest}}>{data.value}{unit}</span>
         {data.change && <span style={{fontSize:11,fontWeight:500,color:data.direction==="up"?"#2D6A4F":data.direction==="down"?"#7A3A3A":T.textMuted}}>
           {data.direction==="up"?"↑":data.direction==="down"?"↓":"→"} {data.change}
         </span>}
@@ -188,12 +289,9 @@ export default function Home() {
   const loaded = visible.filter(c => cards[c.name] && cards[c.name]!=="loading").length;
   const pct    = visible.length ? (loaded/visible.length)*100 : 0;
 
-  useEffect(() => {
-    fetch("/api/stocks").then(r=>r.json()).then(setStocks).catch(()=>{});
-  }, []);
-  useEffect(() => {
-    fetch("/api/indicators").then(r=>r.json()).then(setIndicators).catch(()=>{});
-  }, []);
+  useEffect(() => { fetch("/api/stocks").then(r=>r.json()).then(setStocks).catch(()=>{}); }, []);
+  useEffect(() => { fetch("/api/indicators").then(r=>r.json()).then(setIndicators).catch(()=>{}); }, []);
+
   useEffect(() => {
     if (briefFetched.current.has(market)) return;
     briefFetched.current.add(market);
@@ -251,7 +349,6 @@ export default function Home() {
         .news-row:hover{background:#EDE8E0!important;}
       `}</style>
 
-      {/* Header */}
       <div style={{background:T.forest,color:T.cream,padding:"0 40px",display:"flex",alignItems:"stretch",justifyContent:"space-between",position:"sticky",top:0,zIndex:50}}>
         <div style={{display:"flex",alignItems:"center",padding:"18px 0"}}>
           <div>
@@ -270,7 +367,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Market tabs */}
       <div style={{background:T.cream,borderBottom:`1px solid ${T.border}`,padding:"0 40px",display:"flex"}}>
         {MARKETS.map(m => (
           <button key={m} className="mkt-btn" onClick={()=>setMarket(m)} style={{
@@ -286,11 +382,9 @@ export default function Home() {
       </div>
 
       <div style={{maxWidth:1400,margin:"0 auto",padding:"36px 40px"}}>
-
-        {/* Brief */}
         <div style={{marginBottom:36}}>
           <div style={{display:"flex",alignItems:"baseline",gap:12,marginBottom:22}}>
-            <h2 style={{fontSize:10,letterSpacing:"0.35em",textTransform:"uppercase",color:T.textMuted,fontWeight:500}}>48h Market Brief</h2>
+            <h2 style={{fontSize:10,letterSpacing:"0.35em",textTransform:"uppercase",color:T.textMuted,fontWeight:500}}>Executive Market Brief</h2>
             <span style={{color:T.border}}>—</span>
             <span style={{fontSize:11,color:T.textMuted,fontWeight:300}}>
               {market==="All"?"All Nordic Markets":`${FLAGS[market]} ${market}`}
@@ -306,7 +400,6 @@ export default function Home() {
                 <p style={{fontSize:14,lineHeight:1.9,color:T.textMid,maxWidth:680,fontWeight:300}}>{brief.summary}</p>
                 {brief.trend && <div style={{padding:"11px 20px",background:T.forest,color:T.cream,fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",whiteSpace:"nowrap",fontWeight:400}}>{brief.trend}</div>}
               </div>
-              {/* Indicators */}
               <div style={{marginBottom:30}}>
                 <div style={{fontSize:9.5,letterSpacing:"0.32em",textTransform:"uppercase",color:T.textMuted,marginBottom:14,fontWeight:500}}>Market Indicators — OECD & World Bank Official Data</div>
                 {indicatorMarkets.map(mkt => (
@@ -322,7 +415,7 @@ export default function Home() {
               </div>
               {brief.industryNews?.length>0 && (
                 <div style={{borderTop:`1px solid ${T.border}`,paddingTop:22}}>
-                  <div style={{fontSize:9.5,letterSpacing:"0.32em",textTransform:"uppercase",color:T.textMuted,marginBottom:14,fontWeight:500}}>Industry Context</div>
+                  <div style={{fontSize:9.5,letterSpacing:"0.32em",textTransform:"uppercase",color:T.textMuted,marginBottom:14,fontWeight:500}}>Industry Intelligence</div>
                   {brief.industryNews.map((n,i) => (
                     <div key={i} style={{display:"flex",gap:20,alignItems:"baseline",marginBottom:11}}>
                       <span style={{fontSize:10,color:T.textMuted,whiteSpace:"nowrap",width:58,fontWeight:300}}>{n.time}</span>
@@ -335,7 +428,7 @@ export default function Home() {
                 </div>
               )}
             </div>
-          ) : <p style={{fontSize:13,color:T.textMuted,fontWeight:300}}>Could not load brief.</p>}
+          ) : <p style={{fontSize:13,color:T.textMuted}}>Could not load brief.</p>}
         </div>
 
         <div style={{borderTop:`1px solid ${T.border}`,marginBottom:32}}/>
@@ -346,7 +439,6 @@ export default function Home() {
           <span style={{fontSize:11,color:T.textMuted,fontWeight:300}}>{visible.length} companies · sorted by latest news</span>
         </div>
 
-        {/* Grid */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(380px,1fr))",gap:2,background:T.border}}>
           {sortedVisible.map(c => {
             const d        = cards[c.name];
@@ -399,7 +491,7 @@ export default function Home() {
                           <span style={{fontSize:10,color:T.textMuted,marginLeft:8}}>{d.items[0].ago}</span>
                         </p>
                       ) : (
-                        <p style={{fontSize:12,color:T.textMuted,marginBottom:13,fontWeight:300}}>No recent news found</p>
+                        <p style={{fontSize:12,color:T.textMuted,marginBottom:13,fontWeight:300}}>No recent business news found</p>
                       )}
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         {sentStyle && <span style={{fontSize:9.5,letterSpacing:"0.14em",textTransform:"uppercase",padding:"3px 9px",background:sentStyle.bg,color:sentStyle.color,fontWeight:500}}>{sentStyle.label}</span>}
@@ -427,7 +519,7 @@ export default function Home() {
                   <div className="fade" style={{borderTop:`1px solid ${T.border}`,background:T.white}}>
                     {d.insight && (
                       <div style={{padding:"14px 22px",background:"#F2EDE4",borderBottom:`1px solid ${T.border}`,fontSize:12,color:"#9A7060",lineHeight:1.65,fontWeight:300}}>
-                        <span style={{fontSize:8.5,letterSpacing:"0.28em",textTransform:"uppercase",color:T.mauveLight,display:"block",marginBottom:5,fontWeight:500}}>Strategic note — AI analysis of recent headlines</span>
+                        <span style={{fontSize:8.5,letterSpacing:"0.28em",textTransform:"uppercase",color:T.mauveLight,display:"block",marginBottom:5,fontWeight:500}}>Strategic implication for Matas Group</span>
                         {d.insight}
                       </div>
                     )}
@@ -443,10 +535,10 @@ export default function Home() {
                       </a>
                     )) : (
                       <div style={{padding:"16px 22px"}}>
-                        <a href={`https://news.google.com/search?q=${encodeURIComponent(c.name+" beauty")}&hl=en`}
+                        <a href={`https://news.google.com/search?q=${encodeURIComponent(c.name+" retail strategy results")}&hl=en`}
                           target="_blank" rel="noopener noreferrer"
                           style={{fontSize:12,color:T.mauveDark,fontWeight:400}}>
-                          Search Google News for {c.name} ↗
+                          Search business news for {c.name} ↗
                         </a>
                       </div>
                     )}
