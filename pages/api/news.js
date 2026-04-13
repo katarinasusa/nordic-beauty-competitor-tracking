@@ -1,53 +1,79 @@
 const SEARCH_QUERIES = {
-  "Matas":            ['"Matas" skønhed OR beauty OR butik OR company', '"Matas Group" retail'],
-  "KICKS":            ['"KICKS Beauty" OR "KICKS butik" Scandinavia', '"KICKS" parfymeri Sweden Norway'],
-  "Normal":           ['"Normal" discount butik Denmark skønhed', '"Normal stores" beauty retail Denmark'],
-  "Lyko":             ['"Lyko" beauty OR hår OR hudvård Sweden', '"Lyko.com" skönhet'],
-  "Sephora":          ['"Sephora" Denmark OR Nordic beauty', '"Sephora" LVMH beauty retail'],
-  "Stockmann":        ['"Stockmann" Finland kauneus OR beauty OR kosmetiikka', '"Stockmann" department store Helsinki'],
-  "The Body Shop":    ['"The Body Shop" beauty OR retail OR store', '"Body Shop" sustainability beauty'],
-  "Åhléns":          ['"Åhléns" skönhet OR beauty OR varuhus Sweden', '"Åhléns City" Stockholm'],
-  "Apotea":           ['"Apotea" apotek OR beauty OR hudvård Sweden', '"Apotea.se" online'],
-  "Caia":             ['"Caia Cosmetics" OR "Caia beauty" Sweden', '"Caia" makeup Sverige'],
-  "Fredrik & Louisa": ['"Fredrik og Louisa" OR "Fredrik & Louisa" Norge', '"Fredrik Louisa" parfyme Norway'],
-  "Vita":             ['"Vita" apotek OR helsekost Norway helse', '"Vita.no" OR "Vita apotek"'],
-  "Ruohonjuuri":      ['"Ruohonjuuri" luomu OR kauneus Finland', '"Ruohonjuuri" beauty Helsinki'],
-  "Sokos":            ['"Sokos" kosmetiikka OR kauneus Finland tavaratalo', '"S-ryhmä" Sokos beauty Finland'],
-  "Emotion":          ['"Emotion" parfymeri OR kauneus Finland', '"Emotion" beauty store Finland kosmetiikka'],
+  "Matas":            "Matas beauty Denmark",
+  "KICKS":            "KICKS beauty retailer Scandinavia",
+  "Normal":           "Normal discount stores Denmark beauty",
+  "Lyko":             "Lyko beauty Sweden",
+  "Sephora":          "Sephora beauty Denmark Nordic",
+  "Stockmann":        "Stockmann Finland department store",
+  "The Body Shop":    "The Body Shop beauty retail",
+  "Åhléns":           "Åhléns Sweden beauty",
+  "Apotea":           "Apotea Sweden pharmacy beauty",
+  "Caia":             "Caia Cosmetics Sweden",
+  "Fredrik & Louisa": "Fredrik Louisa Norway beauty",
+  "Vita":             "Vita apotek Norway",
+  "Ruohonjuuri":      "Ruohonjuuri Finland beauty",
+  "Sokos":            "Sokos Finland beauty",
+  "Emotion":          "Emotion beauty Finland parfymeri",
 };
 
 const NOISE_FILTERS = {
-  "Normal":   ["new normal","back to normal","return to normal","perfectly normal","paranormal","subnormal","abnormal"],
-  "Vita":     ["vita coco","vita liberata","dolce vita","acqua di vita","vita nuova","pro vita"],
-  "Emotion":  ["emotional","emotions","emotionally","emotional support","emotional intelligence"],
-  "Caia":     ["caia archon","caia island","caia province"],
-  "Sokos":    ["sokos hotel","sokos hotels"],
+  "Normal":   ["new normal","back to normal","return to normal","paranormal","subnormal","abnormal"],
+  "Vita":     ["vita coco","vita liberata","dolce vita","acqua di vita","bona vita"],
+  "Emotion":  ["emotional","emotions","emotionally","emotional support"],
+  "Caia":     ["caia archon","caia island"],
+  "Sokos":    ["sokos hotel"],
 };
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).end();
 
-  const { url } = req.query;
-  if (!url) return res.status(400).json({ error: "Missing url" });
-  if (!url.startsWith("https://news.google.com/rss/")) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
+  const { company } = req.query;
+  if (!company) return res.status(400).json({ error: "Missing company" });
+
+  const apiKey = process.env.NEWSDATA_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "No API key configured", items: [] });
+
+  const query = SEARCH_QUERIES[company] || `${company} beauty retail`;
+  const noise = NOISE_FILTERS[company] || [];
 
   try {
-    const r = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "application/rss+xml, application/xml, text/xml, */*",
-        "Accept-Language": "en-US,en;q=0.9,da;q=0.8,sv;q=0.7",
-        "Referer": "https://news.google.com/",
-        "Cache-Control": "no-cache",
-      },
-    });
-    const xml = await r.text();
-    res.setHeader("Cache-Control", "s-maxage=1800, stale-while-revalidate");
-    res.setHeader("Content-Type", "application/xml");
-    return res.status(200).send(xml);
+    const url = `https://newsdata.io/api/1/news?apikey=${apiKey}&q=${encodeURIComponent(query)}&language=en,da,sv,no,fi&category=business,top&timeframe=720`;
+
+    const r = await fetch(url);
+    if (!r.ok) {
+      const err = await r.text();
+      console.error("NewsData error:", err);
+      return res.status(200).json({ company, items: [] });
+    }
+
+    const data = await r.json();
+    if (data.status !== "success") {
+      console.error("NewsData bad status:", data);
+      return res.status(200).json({ company, items: [] });
+    }
+
+    const items = (data.results || [])
+      .filter(a => {
+        if (!a.title || !a.link) return false;
+        const t = a.title.toLowerCase();
+        if (noise.some(n => t.includes(n))) return false;
+        return true;
+      })
+      .slice(0, 5)
+      .map(a => ({
+        title:  a.title,
+        link:   a.link,
+        source: a.source_id || a.source_name || "",
+        date:   a.pubDate || null,
+        ago:    a.pubDate ? timeAgo(new Date(a.pubDate)) : "",
+      }))
+      // Sort newest first
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    res.setHeader("Cache-Control", "s-maxage=3600, stale-while-revalidate");
+    return res.status(200).json({ company, items });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    console.error("News fetch error:", err.message);
+    return res.status(200).json({ company, items: [] });
   }
 }
