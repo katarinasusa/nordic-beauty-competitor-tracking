@@ -1,5 +1,5 @@
 const SEARCH_QUERIES = {
-  "Matas":            ['"Matas" skønhed OR beauty OR butik', '"Matas Group" retail'],
+  "Matas":            ['"Matas" skønhed OR beauty OR butik OR company', '"Matas Group" retail'],
   "KICKS":            ['"KICKS Beauty" OR "KICKS butik" Scandinavia', '"KICKS" parfymeri Sweden Norway'],
   "Normal":           ['"Normal" discount butik Denmark skønhed', '"Normal stores" beauty retail Denmark'],
   "Lyko":             ['"Lyko" beauty OR hår OR hudvård Sweden', '"Lyko.com" skönhet'],
